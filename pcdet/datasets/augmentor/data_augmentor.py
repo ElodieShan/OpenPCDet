@@ -44,11 +44,24 @@ class DataAugmentor(object):
         if data_dict is None:
             return partial(self.random_world_flip, config=config)
         gt_boxes, points = data_dict['gt_boxes'], data_dict['points']
-        for cur_axis in config['ALONG_AXIS_LIST']:
-            assert cur_axis in ['x', 'y']
-            gt_boxes, points = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
-                gt_boxes, points,
-            )
+
+        if "metadata" in data_dict and "preprocess_type" in data_dict["metadata"]: # elodie set the filp probability - 20200928
+            preprocess_type = data_dict["metadata"]["preprocess_type"]
+            for cur_axis in config['ALONG_AXIS_LIST']:
+                assert cur_axis in ['x', 'y']
+                if cur_axis + "_filp" in preprocess_type:
+                    p = [0, 1] if preprocess_type[cur_axis + "_filp"] else [1, 0] 
+                else:
+                    p = [0.5, 0.5]
+                gt_boxes, points = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
+                    gt_boxes, points, p
+                )
+        else:
+            for cur_axis in config['ALONG_AXIS_LIST']:
+                assert cur_axis in ['x', 'y']
+                gt_boxes, points = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
+                    gt_boxes, points,
+                )
 
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points

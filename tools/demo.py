@@ -2,7 +2,7 @@ import argparse
 import glob
 from pathlib import Path
 
-import mayavi.mlab as mlab
+# import mayavi.mlab as mlab
 import numpy as np
 import torch
 
@@ -10,7 +10,7 @@ from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
-from visual_utils import visualize_utils as V
+# from visual_utils import visualize_utils as V
 
 
 class DemoDataset(DatasetTemplate):
@@ -83,18 +83,22 @@ def main():
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
+    print("demo_dataset:",demo_dataset[0])
+
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
+            print("data_dict after:",data_dict)
             pred_dicts, _ = model.forward(data_dict)
-
-            V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-            mlab.show(stop=True)
+            print("pred_dicts:",pred_dicts)
+            print("_:",_)
+            # V.draw_scenes(
+            #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
+            #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+            # )
+            # mlab.show(stop=True)
 
     logger.info('Demo done.')
 

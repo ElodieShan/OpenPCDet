@@ -1,5 +1,6 @@
 import copy
 import pickle
+from pathlib import Path
 
 import numpy as np
 from skimage import io
@@ -59,10 +60,10 @@ class KittiDataset(DatasetTemplate):
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_id_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
 
-    def get_lidar(self, idx):
+    def get_lidar(self, idx, num_features=4): # add num_features elodie
         lidar_file = self.root_split_path / 'velodyne' / ('%s.bin' % idx)
         assert lidar_file.exists()
-        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, num_features)
 
     def get_image_shape(self, idx):
         img_file = self.root_split_path / 'image_2' / ('%s.png' % idx)
@@ -186,6 +187,7 @@ class KittiDataset(DatasetTemplate):
             return info
 
         sample_id_list = sample_id_list if sample_id_list is not None else self.sample_id_list
+        print("sample_id_list:",sample_id_list)
         with futures.ThreadPoolExecutor(num_workers) as executor:
             infos = executor.map(process_single_scene, sample_id_list)
         return list(infos)
@@ -206,7 +208,7 @@ class KittiDataset(DatasetTemplate):
             print('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
             sample_idx = info['point_cloud']['lidar_idx']
-            points = self.get_lidar(sample_idx)
+            points = self.get_lidar(sample_idx, num_features=info['point_cloud']['num_features'])
             annos = info['annos']
             names = annos['name']
             difficulty = annos['difficulty']
@@ -346,7 +348,7 @@ class KittiDataset(DatasetTemplate):
 
         sample_idx = info['point_cloud']['lidar_idx']
 
-        points = self.get_lidar(sample_idx)
+        points = self.get_lidar(sample_idx, num_features=info['point_cloud']['num_features'])
         calib = self.get_calib(sample_idx)
 
         img_shape = info['image']['image_shape']
@@ -429,8 +431,9 @@ if __name__ == '__main__':
         import yaml
         from pathlib import Path
         from easydict import EasyDict
-        dataset_cfg = EasyDict(yaml.load(open(sys.argv[2])))
+        dataset_cfg = EasyDict(yaml.load(open(sys.argv[2]),Loader=yaml.FullLoader)) # elodie
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+        print("ROOT_DIR:",ROOT_DIR)
         create_kitti_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Car', 'Pedestrian', 'Cyclist'],

@@ -2,8 +2,7 @@ from functools import partial
 
 import numpy as np
 
-from ...utils import box_utils, common_utils
-
+from ...utils import box_utils, common_utils, pointcloud_sample_utils
 
 class DataProcessor(object):
     def __init__(self, processor_configs, point_cloud_range, training):
@@ -105,6 +104,28 @@ class DataProcessor(object):
                 choice = np.concatenate((choice, extra_choice), axis=0)
             np.random.shuffle(choice)
         data_dict['points'] = points[choice]
+        return data_dict
+
+    # @brief: downsample pointcloud to 16 lines - elodie
+    def downsample_points(self, data_dict=None, config=None): 
+        if data_dict is None:
+            return partial(self.downsample_points, config=config)
+
+        assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
+        assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
+        assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
+
+        points = data_dict['points']
+        data_type = data_dict["metadata"]["data_type"]
+
+        if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
+            if data_type == "kitti":
+                points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+            if data_type == "nuscenes":
+                points = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
+                points = pointcloud_sample_utils.upsample_nusc_v1(points, data_dict['ring'])
+        data_dict['points'] = points  
+        data_dict.pop('ring')      
         return data_dict
 
     def forward(self, data_dict):

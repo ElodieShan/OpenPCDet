@@ -3,14 +3,15 @@ import numpy as np
 from ...utils import common_utils
 
 
-def random_flip_along_x(gt_boxes, points):
+def random_flip_along_x(gt_boxes, points, p=[0.5, 0.5]): 
     """
     Args:
         gt_boxes: (N, 7 + C), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
         points: (M, 3 + C)
+        p:[false probability, true probability] # elodie add - 20200928
     Returns:
     """
-    enable = np.random.choice([False, True], replace=False, p=[0.5, 0.5])
+    enable = np.random.choice([False, True], replace=False, p=p)
     if enable:
         gt_boxes[:, 1] = -gt_boxes[:, 1]
         gt_boxes[:, 6] = -gt_boxes[:, 6]
@@ -22,14 +23,15 @@ def random_flip_along_x(gt_boxes, points):
     return gt_boxes, points
 
 
-def random_flip_along_y(gt_boxes, points):
+def random_flip_along_y(gt_boxes, points, p=[0.5, 0.5]):
     """
     Args:
         gt_boxes: (N, 7 + C), [x, y, z, dx, dy, dz, heading, [vx], [vy]]
         points: (M, 3 + C)
+        p:[false probability, true probability] # elodie add - 20200928
     Returns:
     """
-    enable = np.random.choice([False, True], replace=False, p=[0.5, 0.5])
+    enable = np.random.choice([False, True], replace=False, p=p)
     if enable:
         gt_boxes[:, 0] = -gt_boxes[:, 0]
         gt_boxes[:, 6] = -(gt_boxes[:, 6] + np.pi)

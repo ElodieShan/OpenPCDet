@@ -135,12 +135,13 @@ class DatasetTemplate(torch_data.Dataset):
             gt_classes = np.array([self.class_names.index(n) + 1 for n in data_dict['gt_names']], dtype=np.int32)
             gt_boxes = np.concatenate((data_dict['gt_boxes'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
             data_dict['gt_boxes'] = gt_boxes
-
-        data_dict = self.point_feature_encoder.forward(data_dict)
+        
+        data_dict = self.point_feature_encoder.forward(data_dict) # elodie
 
         data_dict = self.data_processor.forward(
             data_dict=data_dict
         )
+        # data_dict = self.point_feature_encoder.forward(data_dict) # elodie change the order, data_processor first, then point_feature_encoder
         data_dict.pop('gt_names', None)
 
         return data_dict

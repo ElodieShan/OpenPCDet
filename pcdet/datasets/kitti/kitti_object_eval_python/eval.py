@@ -191,12 +191,13 @@ def compute_statistics_jit(overlaps,
     delta_idx = 0
     for i in range(gt_size):
         if ignored_gt[i] == -1:
+            # if not current class，continue
             continue
-        det_idx = -1
+        det_idx = -1     # det_idx used to store best dt idx
         valid_detection = NO_DETECTION
         max_overlap = 0
         assigned_ignored_det = False
-
+        # find dt box which has the highest score 
         for j in range(det_size):
             if (ignored_det[j] == -1):
                 continue
@@ -225,7 +226,7 @@ def compute_statistics_jit(overlaps,
                 assigned_ignored_det = True
 
         if (valid_detection == NO_DETECTION) and ignored_gt[i] == 0:
-            fn += 1
+            fn += 1 # false positive
         elif ((valid_detection != NO_DETECTION)
               and (ignored_gt[i] == 1 or ignored_det[det_idx] == 1)):
             assigned_detection[det_idx] = True
@@ -260,6 +261,7 @@ def compute_statistics_jit(overlaps,
                         assigned_detection[j] = True
                         nstuff += 1
         fp -= nstuff
+        # fp = 0#elodie
         if compute_aos:
             tmp = np.zeros((fp + delta_idx, ))
             # tmp = [0] * fp
@@ -325,7 +327,8 @@ def fused_compute_statistics(overlaps,
                 metric,
                 min_overlap=min_overlap,
                 thresh=thresh,
-                compute_fp=True,
+                # compute_fp=False, elodie
+                compute_fp=True, 
                 compute_aos=compute_aos)
             pr[t, 0] += tp
             pr[t, 1] += fp
@@ -500,6 +503,9 @@ def eval_class(gt_annos,
                         min_overlap=min_overlap,
                         thresh=0.0,
                         compute_fp=False)
+                    # ---rets--------tp, fp, fn, similarity, thresholds
+                    #(10, 0, 1, 0.0, array([0.52749819, 0.76324338, 0.60215807, 0.29757985, 0.72033411,
+                    # 0.11587256, 0.31741855, 0.32567033, 0.36515915, 0.29665849]))
                     tp, fp, fn, similarity, thresholds = rets
                     thresholdss += thresholds.tolist()
                 thresholdss = np.array(thresholdss)
