@@ -28,6 +28,7 @@ def parse_config():
     parser.add_argument('--workers', type=int, default=8, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
+    parser.add_argument('--teacher_ckpt', type=str, default=None, help='teacher checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
@@ -56,12 +57,13 @@ def parse_config():
     return args, cfg
 
 def load_teacher_model(args, cfg, data_set, logger, dist_test=False):
-    ckpt_path = "/home/elodie/OpenPCDet/output/kitti_models/pv_rcnn_without_planes/default/ckpt/checkpoint_epoch_80.pth"
+    # ckpt_path = "/home/elodie/OpenPCDet/output/kitti_models/pv_rcnn_without_planes/default/ckpt/checkpoint_epoch_80.pth"
+    teacher_ckpt = args.teacher_ckpt
     model_teacher = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=data_set)
     if dist_test:
-        model_teacher.load_params_from_file(filename=ckpt_path, logger=logger, to_cpu=dist)
+        model_teacher.load_params_from_file(filename=teacher_ckpt, logger=logger, to_cpu=dist)
     else:
-        model_teacher.load_params_from_file(filename=ckpt_path, logger=logger, to_cpu=dist_test)
+        model_teacher.load_params_from_file(filename=teacher_ckpt, logger=logger, to_cpu=dist_test)
 
     if args.sync_bn:
         model_teacher = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
