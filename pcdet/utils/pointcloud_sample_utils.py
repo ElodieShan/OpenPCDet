@@ -4,7 +4,9 @@ from .pointcloud_utils import *
 def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True):
     if verticle_switch:
         ring_remained = [33, 32, 29, 27, 25, 23, 21, 19, 16, 14, 12, 10, 8, 6, 4, 2]
-        points = points[np.in1d(ring,ring_remained)] # faster
+        mask = np.in1d(ring,ring_remained)
+        points = points[mask] # faster
+        ring = ring[mask]
     if horizontal_switch:
         distances = np.array(get_distances_2d(points)).T
         distances = np.fabs(distances[1:] - distances[:-1])

@@ -24,11 +24,12 @@ class SECONDNet(Detector3DTemplate):
     def get_training_loss(self):
         disp_dict = {}
 
-        loss_rpn, tb_dict = self.dense_head.get_loss()
+        loss_rpn, tb_dict = self.dense_head.get_loss() #models/dense_heads/anchor_head_template.py
         tb_dict = {
             'loss_rpn': loss_rpn.item(),
             **tb_dict
         }
 
         loss = loss_rpn
+        #disp_dict是空的?
         return loss, tb_dict, disp_dict

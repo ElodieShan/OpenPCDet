@@ -361,7 +361,8 @@ class KittiDataset(DatasetTemplate):
             'points': points,
             'frame_id': sample_idx,
             'calib': calib,
-        }
+            'metadata': {'data_type':'kitti'},
+        } # elodie metadata
 
         if 'annos' in info:
             annos = info['annos']

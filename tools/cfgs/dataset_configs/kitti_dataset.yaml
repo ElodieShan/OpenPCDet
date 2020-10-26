@@ -19,20 +19,20 @@ FOV_POINTS_ONLY: True
 DATA_AUGMENTOR:
     DISABLE_AUG_LIST: ['placeholder']
     AUG_CONFIG_LIST:
-        # - NAME: gt_sampling
-        #   USE_ROAD_PLANE: False
-        #   DB_INFO_PATH:
-        #       - kitti_dbinfos_train.pkl
-        #   PREPARE: {
-        #      filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
-        #      filter_by_difficulty: [-1],
-        #   }
+        - NAME: gt_sampling
+          USE_ROAD_PLANE: False
+          DB_INFO_PATH:
+              - kitti_dbinfos_train.pkl
+          PREPARE: {
+             filter_by_min_points: ['Car:5', 'Pedestrian:5', 'Cyclist:5'],
+             filter_by_difficulty: [-1],
+          }
 
-        #   SAMPLE_GROUPS: ['Car:20','Pedestrian:15', 'Cyclist:15']
-        #   NUM_POINT_FEATURES: 4
-        #   DATABASE_WITH_FAKELIDAR: False
-        #   REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
-        #   LIMIT_WHOLE_SCENE: True
+          SAMPLE_GROUPS: ['Car:20','Pedestrian:15', 'Cyclist:15']
+          NUM_POINT_FEATURES: 4
+          DATABASE_WITH_FAKELIDAR: False
+          REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
+          LIMIT_WHOLE_SCENE: True
 
         - NAME: random_world_flip
           ALONG_AXIS_LIST: ['x']
@@ -52,8 +52,8 @@ POINT_FEATURE_ENCODING: {
 
 
 DATA_PROCESSOR:
-    # - NAME: mask_points_and_boxes_outside_range
-    #   REMOVE_OUTSIDE_BOXES: True
+    - NAME: mask_points_and_boxes_outside_range
+      REMOVE_OUTSIDE_BOXES: True
 
     - NAME: shuffle_points
       SHUFFLE_ENABLED: {

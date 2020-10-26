@@ -20,6 +20,8 @@ class DataProcessor(object):
             return partial(self.mask_points_and_boxes_outside_range, config=config)
         mask = common_utils.mask_points_by_range(data_dict['points'], self.point_cloud_range)
         data_dict['points'] = data_dict['points'][mask]
+        if 'ring' in data_dict:
+            data_dict['ring'] = data_dict['ring'][mask]
         if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
             mask = box_utils.mask_boxes_outside_range_numpy(
                 data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1)
@@ -64,13 +66,33 @@ class DataProcessor(object):
                 voxel_output['voxels'], voxel_output['coordinates'], voxel_output['num_points_per_voxel']
         else:
             voxels, coordinates, num_points = voxel_output
-
+        # print("coordinates:",coordinates.shape)
+        # print("coordinates:",coordinates)
         if not data_dict['use_lead_xyz']:
             voxels = voxels[..., 3:]  # remove xyz in voxels(N, 3)
 
         data_dict['voxels'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
+
+        if '16lines' in data_dict: #elodie
+            points_16lines = data_dict['16lines']['points_16lines']
+            voxel_output_16lines = voxel_generator.generate(points_16lines)
+            if isinstance(voxel_output_16lines, dict):
+                voxels_16lines, coordinates_16lines, num_points_16lines = \
+                    voxel_output_16lines['voxels'], voxel_output_16lines['coordinates'], voxel_output_16lines['num_points_per_voxel']
+            else:
+                voxels_16lines, coordinates_16lines, num_points_16lines = voxel_output_16lines
+            
+            # print("coordinates_16lines:",coordinates_16lines.shape)
+            # print("coordinates_16lines:",coordinates_16lines)
+            if not data_dict['use_lead_xyz']:
+                voxels_16lines = voxels_16lines[..., 3:]  # remove xyz in voxels(N, 3)
+
+            data_dict['16lines']['voxels'] = voxels_16lines
+            data_dict['16lines']['voxel_coords'] = coordinates_16lines
+            data_dict['16lines']['voxel_num_points'] = num_points_16lines
+
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):
@@ -107,25 +129,29 @@ class DataProcessor(object):
         return data_dict
 
     # @brief: downsample pointcloud to 16 lines - elodie
-    def downsample_points(self, data_dict=None, config=None): 
+    def downsample_points_16lines(self, data_dict=None, config=None): 
         if data_dict is None:
-            return partial(self.downsample_points, config=config)
+            return partial(self.downsample_points_16lines, config=config)
 
-        assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
+        # assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
         assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
         assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]
 
-        if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
-            if data_type == "kitti":
-                points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
-            if data_type == "nuscenes":
-                points = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
-                points = pointcloud_sample_utils.upsample_nusc_v1(points, data_dict['ring'])
-        data_dict['points'] = points  
-        data_dict.pop('ring')      
+        # if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
+        if data_type == "kitti":
+            points_16lines = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+        if data_type == "nuscenes":
+            points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
+            points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])
+        if config.REPLACE_ORI_POINTS:
+            data_dict['points'] = points_16lines
+        else:
+            data_dict['16lines'] = {}
+            data_dict['16lines']['points_16lines'] = points_16lines
+        data_dict.pop('ring')
         return data_dict
 
     def forward(self, data_dict):

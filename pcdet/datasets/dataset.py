@@ -151,20 +151,45 @@ class DatasetTemplate(torch_data.Dataset):
         data_dict = defaultdict(list)
         for cur_sample in batch_list:
             for key, val in cur_sample.items():
+                if isinstance (val,dict): # elodie
+                    data_dict2 = defaultdict(list)
+                    for key2,val2 in val.items():
+                        data_dict2[key2].append(val2)
+                    val = data_dict2
                 data_dict[key].append(val)
         batch_size = len(batch_list)
         ret = {}
-
+        # print("data_dict:",data_dict)
         for key, val in data_dict.items():
             try:
                 if key in ['voxels', 'voxel_num_points']:
                     ret[key] = np.concatenate(val, axis=0)
                 elif key in ['points', 'voxel_coords']:
+                    # print(key, "ori val:",val)
                     coors = []
                     for i, coor in enumerate(val):
                         coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
                         coors.append(coor_pad)
                     ret[key] = np.concatenate(coors, axis=0)
+                elif key in ['16lines']: # elodie
+                    ret['16lines'] = {}
+                    if isinstance (val,list):
+                        val = val[0]
+                    # print("val:",val)
+                    for key_16lines, val_16lines in val.items():
+                        if key_16lines in ['voxels', 'voxel_num_points']:
+                            ret['16lines'][key_16lines] = np.concatenate(val_16lines, axis=0)
+
+                        elif key_16lines in ['points_16lines', 'voxel_coords']:
+                            # print("key_16lines in ['points', 'voxel_coords'] start",key_16lines)
+                            # print(key_16lines, "ori val_16lines:",val_16lines)
+                            coors = []
+                            for i, coor in enumerate(val_16lines):
+                                coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
+                                coors.append(coor_pad)
+                            ret['16lines'][key_16lines] = np.concatenate(coors, axis=0)
+                            # print("key_16lines in ['points', 'voxel_coords'] end",key_16lines)
+
                 elif key in ['gt_boxes']:
                     max_gt = max([len(x) for x in val])
                     batch_gt_boxes3d = np.zeros((batch_size, max_gt, val[0].shape[-1]), dtype=np.float32)

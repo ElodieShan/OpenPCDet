@@ -26,6 +26,8 @@ class PointFeatureEncoder(object):
                 use_lead_xyz: whether to use xyz as point-wise features
                 ...
         """
+        if "ring" in self.src_feature_list: #elodie
+            data_dict['ring'] = data_dict['points'][:,self.src_feature_list.index('ring')]
         data_dict['points'], use_lead_xyz = getattr(self, self.point_encoding_config.encoding_type)(
             data_dict['points']
         )
