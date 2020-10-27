@@ -34,6 +34,7 @@ class AnchorHeadTemplate(nn.Module):
 
         self.forward_ret_dict = {}
         self.build_losses(self.model_cfg.LOSS_CONFIG)
+        self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
 
     @staticmethod
     def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7):
@@ -87,6 +88,35 @@ class AnchorHeadTemplate(nn.Module):
             loss_utils.WeightedCrossEntropyLoss()
         )
 
+    def build_soft_losses(self, soft_losses_cfg):
+        self.cls_soft_loss_type = None if soft_losses_cfg.get('CLS_LOSS', None) is None \
+            else soft_losses_cfg.CLS_LOSS.TYPE
+        self.reg_soft_loss_type = None if soft_losses_cfg.get('REG_LOSS', None) is None \
+            else soft_losses_cfg.REG_LOSS.TYPE
+        self.dir_soft_loss_type = None if soft_losses_cfg.get('DIR_LOSS', None) is None \
+            else soft_losses_cfg.DIR_LOSS.TYPE
+
+        if self.cls_soft_loss_type is not None:
+            if self.cls_soft_loss_type == 'SigmoidFocalClassificationLoss':
+                self.add_module(
+                    'soft_cls_loss_func',
+                    loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
+                    )
+            else:
+                self.add_module(
+                    'soft_cls_loss_func',
+                    getattr(loss_utils, self.cls_soft_loss_type)()
+                )
+            self.cls_soft_loss_beta = soft_losses_cfg.CLS_LOSS.get('BETA', 0.5)
+
+        if self.reg_soft_loss_type is not None:
+            self.add_module(
+                'soft_reg_loss_func',
+                getattr(loss_utils, self.reg_soft_loss_type)(\
+                    alpha=soft_losses_cfg.REG_LOSS.get('ALPHA', 0.5),\
+                    margin=soft_losses_cfg.REG_LOSS.get('MARGIN', 0.001))
+            )
+
     def assign_targets(self, gt_boxes):
         """
         Args:
@@ -99,13 +129,11 @@ class AnchorHeadTemplate(nn.Module):
         )
         return targets_dict
 
-    def get_cls_layer_loss(self, teacher_result=None, alpha=0.5):
+    def get_cls_layer_loss(self, teacher_result=None):
         cls_preds = self.forward_ret_dict['cls_preds']
         box_cls_labels = self.forward_ret_dict['box_cls_labels']
-        # print("\n\nforward_ret_dict['cls_preds']",self.forward_ret_dict['cls_preds'].shape)
-        # print("forward_ret_dict['box_cls_labels']",self.forward_ret_dict['box_cls_labels'].shape)
+
         batch_size = int(cls_preds.shape[0])
-        
 
         cared = box_cls_labels >= 0  # [N, num_anchors]
         positives = box_cls_labels > 0
@@ -120,6 +148,7 @@ class AnchorHeadTemplate(nn.Module):
         pos_normalizer = positives.sum(1, keepdim=True).float()
         reg_weights /= torch.clamp(pos_normalizer, min=1.0)
         cls_weights /= torch.clamp(pos_normalizer, min=1.0)
+
         cls_targets = box_cls_labels * cared.type_as(box_cls_labels)
         cls_targets = cls_targets.unsqueeze(dim=-1)
 
@@ -130,20 +159,38 @@ class AnchorHeadTemplate(nn.Module):
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
         one_hot_targets = one_hot_targets[..., 1:]
-
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
 
-        if teacher_result is not None: # elodie teacher
+        if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
-            one_hot_targets_teacher = copy.deepcopy(one_hot_targets)
-            cls_loss_src_teacher = self.cls_loss_func(cls_preds_teacher, one_hot_targets_teacher, weights=cls_weights)
-            cls_loss_teacher = cls_loss_src_teacher.sum(dim=-1)
-            cls_loss_student = cls_loss_src.sum(dim=-1)
-            cls_loss_student_soft = cls_loss_student[cls_loss_student>cls_loss_teacher]
-            cls_loss_student_soft = cls_loss_student_soft.sum() / batch_size
-            cls_loss = cls_loss + alpha*cls_loss_student_soft
+            if self.cls_soft_loss_type == 'SigmoidFocalClassificationLoss':
+                cls_preds_teacher_max = cls_preds_teacher.argmax(dim=-1)
+                cls_preds_teacher_one_hot = torch.zeros(
+                    *list(cls_preds_teacher_max.shape), self.num_class, dtype=cls_preds_teacher_max.dtype, device=cls_preds_teacher_max.device
+                )
+                cls_preds_teacher_one_hot.scatter_(-1, cls_preds_teacher_max.unsqueeze(dim=-1).long(), 1.0)
+                cls_preds_teacher_one_hot = torch.where(cls_preds_teacher>0, cls_preds_teacher_one_hot, torch.full_like(cls_preds_teacher_one_hot,0))
+                
+                cls_preds_teacher_max = cls_preds_teacher_one_hot.argmax(dim=-1)
+                positives_t = cls_preds_teacher_max > 0
+                negatives_t = cls_preds_teacher_max == 0
+                negative_cls_weights_t = negatives_t * 1.0
+                cls_weights_t = (negative_cls_weights_t + 1.0 * positives_t).float()
+
+                pos_normalizer_t = positives_t.sum(1, keepdim=True).float()
+                cls_weights_t /= torch.clamp(pos_normalizer_t, min=1.0)
+                cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_one_hot.float(), weights=cls_weights_t/2.0)  # [N, M]
+            else:
+                weights = positives.float()
+                weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
+                cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
+
+            cls_soft_loss = cls_soft_loss.sum() / batch_size
+            # print("cls loss:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
+            cls_loss = cls_loss + self.cls_soft_loss_beta * cls_soft_loss
+            # print("\tcls_loss after:",cls_loss)
 
 
         cls_loss = cls_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
@@ -177,7 +224,7 @@ class AnchorHeadTemplate(nn.Module):
             dir_cls_targets = dir_targets
         return dir_cls_targets
 
-    def get_box_reg_layer_loss(self, teacher_result=None, mimic_margin=0.0, alpha=0.5):
+    def get_box_reg_layer_loss(self, teacher_result=None, beta=0.5):
         # teacher_result is forward_ret_dict of teacher model
         box_preds = self.forward_ret_dict['box_preds']
         box_dir_cls_preds = self.forward_ret_dict.get('dir_cls_preds', None)
@@ -211,21 +258,19 @@ class AnchorHeadTemplate(nn.Module):
 
         loc_loss = loc_loss_src.sum() / batch_size
 
-        if teacher_result is not None: # elodie teacher
-            box_preds_teacher = teacher_result['box_preds']
-            box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
-            box_preds_teacher = box_preds_teacher.view(batch_size, -1,
-                                    box_preds_teacher.shape[-1] // self.num_anchors_per_location if not self.use_multihead else
-                                    box_preds_teacher.shape[-1])
-            box_reg_targets_teacher = copy.deepcopy(box_reg_targets) 
-            box_preds_sin_teacher, reg_targets_sin_teacher = self.add_sin_difference(box_preds_teacher, box_reg_targets_teacher)
-            loc_loss_src_teacher = self.reg_loss_func(box_preds_sin_teacher, reg_targets_sin_teacher, weights=reg_weights)  # [N, M]
-            loc_loss_teacher = loc_loss_src_teacher.sum(dim=-1) + mimic_margin
-            loc_loss_student = loc_loss_src.sum(dim=-1)
-            loc_loss_student_soft = loc_loss_student[loc_loss_student>loc_loss_teacher]
-            loc_loss_student_soft = loc_loss_student_soft.sum() / batch_size
-            loc_loss = loc_loss + alpha*loc_loss_student_soft
+        if teacher_result is not None and self.reg_soft_loss_type is not None: # elodie teacher
+            if self.reg_soft_loss_type == 'BoundedRegressionLoss':
+                box_preds_teacher = teacher_result['box_preds']
+                box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
+                box_preds_teacher = box_preds_teacher.view(batch_size, -1,
+                                        box_preds_teacher.shape[-1] // self.num_anchors_per_location if not self.use_multihead else
+                                        box_preds_teacher.shape[-1])
 
+                loc_soft_loss = self.soft_reg_loss_func(box_preds, box_preds_teacher, box_reg_targets) 
+                loc_soft_loss = loc_soft_loss.sum() / batch_size
+                # print("reg loss:\n\tloc_loss before:",loc_loss,"\n\tloc_soft_loss:",loc_soft_loss)
+                loc_loss = loc_loss + beta * loc_soft_loss
+                # print("\tloc_loss after:",loc_loss)
 
         loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
         box_loss = loc_loss
@@ -247,7 +292,8 @@ class AnchorHeadTemplate(nn.Module):
 
             dir_loss = dir_loss_src.sum() / batch_size
 
-            if teacher_result is not None: # elodie teacher
+            if teacher_result is not None and self.dir_soft_loss_type is not None: # elodie teacher
+                print("teacher_dir")
                 box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
                 dir_logits_teacher = box_dir_cls_preds_teacher.view(batch_size, -1, self.model_cfg.NUM_DIR_BINS)
                 dir_loss_teacher = self.dir_loss_func(dir_logits_teacher, dir_targets, weights=weights)

@@ -84,6 +84,18 @@ MODEL:
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
 
+        SOFT_LOSS_CONFIG:
+            CLS_LOSS: 
+                # TYPE: WeightedCrossEntropyLoss
+                # BETA: 2
+                TYPE: SigmoidFocalClassificationLoss
+                BETA: 1
+
+            REG_LOSS:
+                TYPE: BoundedRegressionLoss
+                ALPHA: 3
+                MARGIN: 0.00001
+
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
         SCORE_THRESH: 0.1
@@ -104,7 +116,7 @@ OPTIMIZATION:
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.003
+    LR: 0.0015
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

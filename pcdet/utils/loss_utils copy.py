@@ -16,35 +16,21 @@ class SoftWeightedLoss(nn.Module):
         """
         super(SoftWeightedLoss, self).__init__()
         self.margin = margin
-        self.gamma = gamma
+        self.alpha = alpha
 
-    def forward(self, student_input: torch.Tensor, teacher_input: torch.Tensor, target: torch.Tensor, loss_func):
+    def forward(self, student_loss_input: torch.Tensor, teacher_loss_input: torch.Tensor):
         """
         Args:
-            input: (B, #anchors, #classes) float tensor.
+            student_input: (B, #anchors, #classes or codes) float tensor.
                 Predicted logits for each class
-            target: (B, #anchors, #classes) float tensor.
-                One-hot encoded classification targets
-            weights: (B, #anchors) float tensor.
-                Anchor-wise weights.
+            teacher_input: (B, #anchors, #classes or codes) float tensor.
 
         Returns:
-            weighted_loss: (B, #anchors, #classes) float tensor after weighting.
+            soft_weighted_loss: sum/batch_size.
         """
-        pred_sigmoid = torch.sigmoid(input)
-        alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
-        pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
-        focal_weight = alpha_weight * torch.pow(pt, self.gamma)
+        teacher_loss_input = teacher_loss_input + self.margin 
+        student_loss_soft = student_loss_input[student_loss_input>teacher_loss_input]
+        student_loss_soft = self.alpha * student_loss_soft.sum()
 
-        bce_loss = self.sigmoid_cross_entropy_with_logits(input, target)
-
-        loss = focal_weight * bce_loss
-
-        if weights.shape.__len__() == 2 or \
-                (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
-            weights = weights.unsqueeze(-1)
-
-        assert weights.shape.__len__() == loss.shape.__len__()
-
-        return loss * weights
+        return student_loss_soft
 

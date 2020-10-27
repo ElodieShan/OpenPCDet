@@ -18,15 +18,14 @@ class SECONDNet(Detector3DTemplate):
             }
             return ret_dict, tb_dict, disp_dict
         elif is_teacher:
-            forward_ret_dict = self.dense_head.get_forward_ret_dict()
-            # print("teacher forward_ret_dict['cls_preds']:",forward_ret_dict['cls_preds'].shape)
-            # print("teacher forward_ret_dict['box_preds']:",forward_ret_dict['box_preds'].shape)
-            # print("teacher forward_ret_dict['dir_cls_preds']:",forward_ret_dict['dir_cls_preds'].shape)
-
-            return forward_ret_dict
+            forword_result = self.get_forword_result()
+            return forword_result
         else:
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             return pred_dicts, recall_dicts
+
+    def get_forword_result(self):
+        return self.dense_head.get_forward_ret_dict()
 
     def get_training_loss(self,teacher_ret_dict=None):
         disp_dict = {}
