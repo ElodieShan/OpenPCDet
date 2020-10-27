@@ -99,7 +99,7 @@ class AnchorHeadTemplate(nn.Module):
         )
         return targets_dict
 
-    def get_cls_layer_loss(self, teacher_result=None):
+    def get_cls_layer_loss(self, teacher_result=None, alpha=0.5):
         cls_preds = self.forward_ret_dict['cls_preds']
         box_cls_labels = self.forward_ret_dict['box_cls_labels']
         # print("\n\nforward_ret_dict['cls_preds']",self.forward_ret_dict['cls_preds'].shape)
@@ -130,16 +130,10 @@ class AnchorHeadTemplate(nn.Module):
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
         one_hot_targets = one_hot_targets[..., 1:]
-        # print("cls_preds:",cls_preds)
-        # print("one_hot_targets:",one_hot_targets)
-        # print("one_hot_targets2:")
-        # one_hot_targets2 = one_hot_targets.sum(dim=-1)
-        # for i in range(one_hot_targets2.shape[1]):
-        #     if one_hot_targets2[0,i]>0:
-        #         print(one_hot_targets[0,i])
+
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
-        # print("cls_loss:",cls_loss)
+
         if teacher_result is not None: # elodie teacher
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
@@ -147,10 +141,10 @@ class AnchorHeadTemplate(nn.Module):
             cls_loss_src_teacher = self.cls_loss_func(cls_preds_teacher, one_hot_targets_teacher, weights=cls_weights)
             cls_loss_teacher = cls_loss_src_teacher.sum(dim=-1)
             cls_loss_student = cls_loss_src.sum(dim=-1)
-            cls_loss_student_soft = cls_loss_teacher[cls_loss_student>cls_loss_teacher]
+            cls_loss_student_soft = cls_loss_student[cls_loss_student>cls_loss_teacher]
             cls_loss_student_soft = cls_loss_student_soft.sum() / batch_size
-            cls_loss = cls_loss + cls_loss_student_soft
-            # print("cls_loss_student_soft:",cls_loss_student_soft)
+            cls_loss = cls_loss + alpha*cls_loss_student_soft
+
 
         cls_loss = cls_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
         tb_dict = {
@@ -183,18 +177,12 @@ class AnchorHeadTemplate(nn.Module):
             dir_cls_targets = dir_targets
         return dir_cls_targets
 
-    def get_box_reg_layer_loss(self, teacher_result=None, mimic_margin=0.0):
+    def get_box_reg_layer_loss(self, teacher_result=None, mimic_margin=0.0, alpha=0.5):
         # teacher_result is forward_ret_dict of teacher model
         box_preds = self.forward_ret_dict['box_preds']
         box_dir_cls_preds = self.forward_ret_dict.get('dir_cls_preds', None)
         box_reg_targets = self.forward_ret_dict['box_reg_targets']
         box_cls_labels = self.forward_ret_dict['box_cls_labels']
-
-
-        # print("\n\nforward_ret_dict['box_preds']",self.forward_ret_dict['box_preds'].shape)
-        # print("forward_ret_dict['dir_cls_preds']",self.forward_ret_dict['dir_cls_preds'].shape)
-        # print("forward_ret_dict['box_reg_targets']",self.forward_ret_dict['box_reg_targets'].shape)
-        # print("forward_ret_dict['box_cls_labels']",self.forward_ret_dict['box_cls_labels'].shape)
 
         batch_size = int(box_preds.shape[0])
 
@@ -217,13 +205,12 @@ class AnchorHeadTemplate(nn.Module):
                                    box_preds.shape[-1] // self.num_anchors_per_location if not self.use_multihead else
                                    box_preds.shape[-1])
 
-        # print("box_preds2:",box_preds.shape)
         # sin(a - b) = sinacosb-cosasinb
         box_preds_sin, reg_targets_sin = self.add_sin_difference(box_preds, box_reg_targets)
         loc_loss_src = self.reg_loss_func(box_preds_sin, reg_targets_sin, weights=reg_weights)  # [N, M]
 
         loc_loss = loc_loss_src.sum() / batch_size
-        # print("loc_loss:",loc_loss)
+
         if teacher_result is not None: # elodie teacher
             box_preds_teacher = teacher_result['box_preds']
             box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
@@ -235,11 +222,9 @@ class AnchorHeadTemplate(nn.Module):
             loc_loss_src_teacher = self.reg_loss_func(box_preds_sin_teacher, reg_targets_sin_teacher, weights=reg_weights)  # [N, M]
             loc_loss_teacher = loc_loss_src_teacher.sum(dim=-1) + mimic_margin
             loc_loss_student = loc_loss_src.sum(dim=-1)
-            loc_loss_student_soft = loc_loss_teacher[loc_loss_student>loc_loss_teacher]
+            loc_loss_student_soft = loc_loss_student[loc_loss_student>loc_loss_teacher]
             loc_loss_student_soft = loc_loss_student_soft.sum() / batch_size
-            loc_loss = loc_loss + loc_loss_student_soft
-            # print("loc_loss_student_soft:",loc_loss_student_soft)
-            # print("loc_loss2:",loc_loss)
+            loc_loss = loc_loss + alpha*loc_loss_student_soft
 
 
         loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
@@ -259,21 +244,18 @@ class AnchorHeadTemplate(nn.Module):
             weights = positives.type_as(dir_logits)
             weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
             dir_loss_src = self.dir_loss_func(dir_logits, dir_targets, weights=weights)
-            # print("dir_loss_src:",dir_loss_src.shape)
+
             dir_loss = dir_loss_src.sum() / batch_size
-            # print("dir_loss:",dir_loss)
+
             if teacher_result is not None: # elodie teacher
                 box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
                 dir_logits_teacher = box_dir_cls_preds_teacher.view(batch_size, -1, self.model_cfg.NUM_DIR_BINS)
                 dir_loss_teacher = self.dir_loss_func(dir_logits_teacher, dir_targets, weights=weights)
-                # dir_loss_teacher = dir_loss_teacher.sum(dim=-1)
-                # print("dir_loss_teacher:",dir_loss_teacher)
+
                 dir_loss_student = dir_loss_src
-                dir_loss_student_soft = dir_loss_teacher[dir_loss_student>dir_loss_teacher]
-                # print("dir_loss_student_soft:",dir_loss_student_soft.sum())
+                dir_loss_student_soft = dir_loss_student[dir_loss_student>dir_loss_teacher]
                 dir_loss_student_soft = dir_loss_student_soft.sum() / batch_size
-                dir_loss = dir_loss + dir_loss_student_soft
-                # print("dir_loss2:",dir_loss)
+                dir_loss = dir_loss + alpha*dir_loss_student_soft
 
             dir_loss = dir_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['dir_weight']
             box_loss += dir_loss

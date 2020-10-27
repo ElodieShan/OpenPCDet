@@ -141,9 +141,11 @@ class DatasetTemplate(torch_data.Dataset):
         data_dict = self.data_processor.forward(
             data_dict=data_dict
         )
-        # data_dict = self.point_feature_encoder.forward(data_dict) # elodie change the order, data_processor first, then point_feature_encoder
-        data_dict.pop('gt_names', None)
 
+        if 'ring' in data_dict: # elodie
+             data_dict.pop('ring')
+
+        data_dict.pop('gt_names', None)
         return data_dict
 
     @staticmethod
