@@ -34,7 +34,15 @@ class AnchorHeadTemplate(nn.Module):
 
         self.forward_ret_dict = {}
         self.build_losses(self.model_cfg.LOSS_CONFIG)
-        self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
+
+        self.model_cfg.SOFT_LOSS_CONFIG = self.model_cfg.get('SOFT_LOSS_CONFIG', None) # elodie soft loss
+        
+        if self.model_cfg.SOFT_LOSS_CONFIG is not None:
+            self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
+        else:
+            self.cls_soft_loss_type = None
+            self.reg_soft_loss_type = None
+            self.dir_soft_loss_type = None
 
     @staticmethod
     def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7):

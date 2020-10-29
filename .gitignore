@@ -8,6 +8,7 @@ venv/
 *.idea/
 *.so
 *.sh 
+*.yaml
 *.pth
 *.pkl
 *.zip
