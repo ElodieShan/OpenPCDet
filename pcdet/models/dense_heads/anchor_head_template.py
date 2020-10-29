@@ -97,7 +97,7 @@ class AnchorHeadTemplate(nn.Module):
             else soft_losses_cfg.DIR_LOSS.TYPE
 
         if self.cls_soft_loss_type is not None:
-            if self.cls_soft_loss_type == 'SigmoidFocalClassificationLoss':
+            if self.cls_soft_loss_type in ['SigmoidFocalClassificationLoss', 'SigmoidFocalLoss']:
                 self.add_module(
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
@@ -165,7 +165,7 @@ class AnchorHeadTemplate(nn.Module):
         if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
-            if self.cls_soft_loss_type == 'SigmoidFocalClassificationLoss':
+            if self.cls_soft_loss_type in ['SigmoidFocalClassificationLoss', 'SigmoidFocalLoss' ]:
                 cls_preds_teacher_max = cls_preds_teacher.argmax(dim=-1)
                 cls_preds_teacher_one_hot = torch.zeros(
                     *list(cls_preds_teacher_max.shape), self.num_class, dtype=cls_preds_teacher_max.dtype, device=cls_preds_teacher_max.device
@@ -181,7 +181,11 @@ class AnchorHeadTemplate(nn.Module):
 
                 pos_normalizer_t = positives_t.sum(1, keepdim=True).float()
                 cls_weights_t /= torch.clamp(pos_normalizer_t, min=1.0)
-                cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_one_hot.float(), weights=cls_weights_t/2.0)  # [N, M]
+                if self.cls_soft_loss_type == 'SigmoidFocalClassificationLoss':
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_one_hot.float(), weights=cls_weights_t/2.0)  # [N, M]
+                elif self.cls_soft_loss_type == 'SigmoidFocalLoss':
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, torch.sigmoid(cls_preds_teacher), weights=cls_weights_t)  # [N, M]
+
             else:
                 weights = positives.float()
                 weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)

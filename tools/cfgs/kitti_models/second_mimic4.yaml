@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG: 
-    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset.yaml
+    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_mimic.yaml
 
 
 MODEL:
@@ -83,6 +83,16 @@ MODEL:
                 'dir_weight': 0.2,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
+
+        SOFT_LOSS_CONFIG:
+            CLS_LOSS: 
+                TYPE: SigmoidFocalLoss
+                BETA: 0.5
+
+            REG_LOSS:
+                TYPE: BoundedRegressionLoss
+                ALPHA: 3
+                MARGIN: 0.0
 
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
