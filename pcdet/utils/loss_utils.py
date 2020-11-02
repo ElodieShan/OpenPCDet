@@ -55,8 +55,6 @@ class SigmoidFocalClassificationLoss(nn.Module):
             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
         """
         pred_sigmoid = torch.sigmoid(input)
-        # print("pred_sigmoid:",pred_sigmoid)
-        # print("target:",target)
         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
         pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
         focal_weight = alpha_weight * torch.pow(pt, self.gamma)
@@ -208,47 +206,6 @@ class WeightedCrossEntropyLoss(nn.Module):
         return loss
 
 
-class BoundedRegressionLoss(nn.Module):
-
-    def __init__(self, alpha: float = 0.5, margin: float = 0.001):
-        """
-        Args:
-            alpha: Weighting parameter to balance soft and hard loss.
-            margin: teacher bounded margin. 
-        """
-        super(BoundedRegressionLoss, self).__init__()
-        self.alpha = alpha
-        self.margin = margin
-
-    def forward(self, input_student: torch.Tensor, input_teacher: torch.Tensor, target: torch.Tensor):
-        """
-        Args:
-            input_student/input_teacher: (B, #anchors, #codes) float tensor.
-                Ecoded predicted locations of objects.
-            target: (B, #anchors, #codes) float tensor.
-                Regression targets.
-
-        Returns:
-            loss: (B, #anchors) float tensor.
-                BoundedRegressionLoss.
-        """
-        target = torch.where(torch.isnan(target), input_student, target)  # ignore nan targets
-
-        l2_student = torch.pow((input_student - target), 2)-self.margin
-        l2_teacher = torch.pow((input_teacher - target), 2)
-
-        soft_loss = torch.where(l2_student>l2_teacher, l2_student, torch.full_like(l2_student,0))
-        soft_loss = soft_loss / (l2_student>l2_teacher).sum(1, keepdim=True).float()
-        # soft_loss = 
-        # soft_loss = soft_loss.mean(dim=1)
-        # print("soft_loss:",soft_loss)
-        # for i in range(1000):
-        #     if soft_loss2[0,i] > 0:
-        #         print(soft_loss2[0,i])
-        return soft_loss * self.alpha
-
-
-
 def get_corner_loss_lidar(pred_bbox3d: torch.Tensor, gt_bbox3d: torch.Tensor):
     """
     Args:
@@ -273,4 +230,3 @@ def get_corner_loss_lidar(pred_bbox3d: torch.Tensor, gt_bbox3d: torch.Tensor):
     corner_loss = WeightedSmoothL1Loss.smooth_l1_loss(corner_dist, beta=1.0)
 
     return corner_loss.mean(dim=1)
-

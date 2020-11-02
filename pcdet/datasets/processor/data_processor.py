@@ -74,6 +74,7 @@ class DataProcessor(object):
         data_dict['voxels'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
+
         if '16lines' in data_dict: #elodie
             points_16lines = data_dict['16lines']['points_16lines']
             voxel_output_16lines = voxel_generator.generate(points_16lines)

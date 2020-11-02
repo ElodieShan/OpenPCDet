@@ -108,7 +108,8 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
 
             # save trained model
             trained_epoch = cur_epoch + 1
-            if (trained_epoch % ckpt_save_interval == 0 or trained_epoch==total_epochs) and rank == 0: #elodie total_epochs
+            if trained_epoch % ckpt_save_interval == 0 and rank == 0:
+
                 ckpt_list = glob.glob(str(ckpt_save_dir / 'checkpoint_epoch_*.pth'))
                 ckpt_list.sort(key=os.path.getmtime)
 
