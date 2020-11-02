@@ -35,8 +35,8 @@ def model_fn_decorator():
             # print("model_teacher,'\nbatch_dict_teacher:",batch_dict_teacher)
             with torch.no_grad():
                 # pred_dicts, ret_dict2 = model_teacher(batch_dict_teacher)
-                teacher_ret_dict = model_teacher(batch_dict_teacher,is_teacher=True)
-            ret_dict, tb_dict, disp_dict = model(batch_dict, teacher_ret_dict=teacher_ret_dict)
+                teacher_ret_dict, teacher_data_dict = model_teacher(batch_dict_teacher, is_teacher=True)
+            ret_dict, tb_dict, disp_dict = model(batch_dict, teacher_ret_dict=teacher_ret_dict, teacher_data_dict=teacher_data_dict)
         else:
             ret_dict, tb_dict, disp_dict = model(batch_dict)
 

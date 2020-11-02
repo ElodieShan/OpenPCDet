@@ -207,17 +207,39 @@ class WeightedCrossEntropyLoss(nn.Module):
         loss = F.cross_entropy(input, target, reduction='none') * weights
         return loss
 
+class HintL2Loss(nn.Module):
+    def __init__(self):
+        super(HintL2Loss, self).__init__()
+    
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        input = input.permute(0, 2, 3, 1) # [N,H,W,C]
+        target = target.permute(0, 2, 3, 1) # [N,H,W,C]
+
+        l2_hint_loss = torch.pow((input - target), 2)
+        l2_hint_loss = l2_hint_loss.mean(dim=-1)
+
+        return l2_hint_loss
+
+class WeightedKLDivergenceLoss(nn.Module):
+    def __init__(self):
+        super(WeightedKLDivergenceLoss, self).__init__()
+    
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        input = F.log_softmax(input)
+        target = F.softmax(target, dim=-1)
+
+        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) * weights
+        return klloss
 
 class BoundedRegressionLoss(nn.Module):
 
-    def __init__(self, alpha: float = 0.5, margin: float = 0.001):
+    def __init__(self, margin: float = 0.001):
         """
         Args:
             alpha: Weighting parameter to balance soft and hard loss.
             margin: teacher bounded margin. 
         """
         super(BoundedRegressionLoss, self).__init__()
-        self.alpha = alpha
         self.margin = margin
 
     def forward(self, input_student: torch.Tensor, input_teacher: torch.Tensor, target: torch.Tensor):
@@ -245,7 +267,7 @@ class BoundedRegressionLoss(nn.Module):
         # for i in range(1000):
         #     if soft_loss2[0,i] > 0:
         #         print(soft_loss2[0,i])
-        return soft_loss * self.alpha
+        return soft_loss
 
 
 
