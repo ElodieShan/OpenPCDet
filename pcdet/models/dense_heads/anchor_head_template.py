@@ -113,6 +113,12 @@ class AnchorHeadTemplate(nn.Module):
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
                     )
+            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss']:
+                weighted = soft_losses_cfg.CLS_LOSS.get('WEIGHTED', True)
+                self.add_module(
+                    'soft_cls_loss_func',
+                     getattr(loss_utils, self.cls_soft_loss_type)(weighted=weighted)
+                    )
             else:
                 self.add_module(
                     'soft_cls_loss_func',
@@ -212,7 +218,7 @@ class AnchorHeadTemplate(nn.Module):
                 cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
 
             cls_soft_loss = cls_soft_loss.sum() / batch_size
-            print("cls loss:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
+            # print("cls loss:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
             cls_loss = cls_loss + self.cls_soft_loss_beta * cls_soft_loss
             # print("\tcls_loss after:",cls_loss)
 
@@ -356,7 +362,7 @@ class AnchorHeadTemplate(nn.Module):
         
         if self.hint_soft_loss_type is not None:
             hint_loss, tb_dict_hint = self.get_hint_loss(student_data_dict=student_data_dict, teacher_data_dict=teacher_data_dict)
-            print("hint_loss:",hint_loss)
+            # print("hint_loss:",hint_loss)
             tb_dict.update(tb_dict_hint)
             rpn_loss = rpn_loss + hint_loss
 

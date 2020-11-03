@@ -39,6 +39,9 @@ class SigmoidFocalClassificationLoss(nn.Module):
         """
         loss = torch.clamp(input, min=0) - input * target + \
                torch.log1p(torch.exp(-torch.abs(input)))
+        
+        # formula is same as :
+        # loss = target * -log(sigmoid(input)) + (1 - target) * -log(1 - sigmoid(input))
         return loss
 
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
@@ -221,14 +224,19 @@ class HintL2Loss(nn.Module):
         return l2_hint_loss
 
 class WeightedKLDivergenceLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, weighted=True):
         super(WeightedKLDivergenceLoss, self).__init__()
+        self.weighted = weighted
     
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        input = F.log_softmax(input)
+        input = F.log_softmax(input, dim=-1)
         target = F.softmax(target, dim=-1)
 
-        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) * weights
+        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) 
+        if self.weighted:
+            klloss = klloss* weights
+        else:
+            klloss = klloss.mean(dim=-1)
         return klloss
 
 class BoundedRegressionLoss(nn.Module):
