@@ -125,6 +125,7 @@ class AnchorHeadTemplate(nn.Module):
                     getattr(loss_utils, self.cls_soft_loss_type)()
                 )
             self.cls_soft_loss_beta = soft_losses_cfg.CLS_LOSS.get('BETA', 0.5)
+            self.cls_soft_loss_modify = soft_losses_cfg.CLS_LOSS.get('MODIFY', None)
 
         if self.reg_soft_loss_type is not None:
             self.add_module(
@@ -133,6 +134,7 @@ class AnchorHeadTemplate(nn.Module):
                     margin=soft_losses_cfg.REG_LOSS.get('MARGIN', 0.001))
             )
             self.reg_soft_loss_alpha = soft_losses_cfg.REG_LOSS.get('ALPHA', 0.5)
+            self.reg_soft_loss_modify = soft_losses_cfg.REG_LOSS.get('MODIFY', None)
 
         if self.hint_soft_loss_type is not None:
             self.add_module(
@@ -217,10 +219,15 @@ class AnchorHeadTemplate(nn.Module):
                 weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
                 cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
 
-            cls_soft_loss = cls_soft_loss.sum() / batch_size
-            # print("cls loss:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
-            cls_loss = cls_loss + self.cls_soft_loss_beta * cls_soft_loss
-            # print("\tcls_loss after:",cls_loss)
+            cls_soft_loss = self.cls_soft_loss_beta * cls_soft_loss.sum() / batch_size
+
+            print("cls loss:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
+            if self.cls_soft_loss_modify is not None:
+                cls_loss = (1-self.cls_soft_loss_modify)*cls_loss + self.cls_soft_loss_modify * cls_soft_loss
+            else:
+                cls_loss = cls_loss + cls_soft_loss
+
+        print("\tcls_loss after:",cls_loss)
 
 
         cls_loss = cls_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
@@ -297,10 +304,14 @@ class AnchorHeadTemplate(nn.Module):
                                         box_preds_teacher.shape[-1])
 
                 loc_soft_loss = self.soft_reg_loss_func(box_preds, box_preds_teacher, box_reg_targets) 
-                loc_soft_loss = loc_soft_loss.sum() / batch_size
-                # print("reg loss:\n\tloc_loss before:",loc_loss,"\n\tloc_soft_loss:",loc_soft_loss)
-                loc_loss = loc_loss + self.reg_soft_loss_alpha * loc_soft_loss
-                # print("\tloc_loss after:",loc_loss)
+                loc_soft_loss = self.reg_soft_loss_alpha *loc_soft_loss.sum() / batch_size
+                print("reg loss:\n\tloc_loss before:",loc_loss,"\n\tloc_soft_loss:",loc_soft_loss)
+
+                if self.reg_soft_loss_modify is not None:
+                    loc_loss = (1-self.reg_soft_loss_modify)*loc_loss + self.reg_soft_loss_modify * loc_soft_loss
+                else:
+                    loc_loss = loc_loss + loc_soft_loss
+        print("\tloc_loss after:",loc_loss)
 
         loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
         box_loss = loc_loss

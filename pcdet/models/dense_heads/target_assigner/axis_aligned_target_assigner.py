@@ -78,6 +78,7 @@ class AxisAlignedTargetAssigner(object):
                     feature_map_size = anchors.shape[:3]
                     anchors = anchors.view(-1, anchors.shape[-1])
                     selected_classes = cur_gt_classes[mask]
+                # print("anchors:",anchors.shape)
 
                 single_target = self.assign_targets_single(
                     anchors,
@@ -86,6 +87,21 @@ class AxisAlignedTargetAssigner(object):
                     matched_threshold=self.matched_thresholds[anchor_class_name],
                     unmatched_threshold=self.unmatched_thresholds[anchor_class_name]
                 )
+                # print("single_target:")
+                # print("\tbox_cls_labels:",single_target['box_cls_labels'].shape)
+                # print("\box_cls_labels:")
+
+                # for i in range(single_target['box_cls_labels'].shape[-1]):
+                    # if single_target['box_cls_labels'][i]>0:
+                    # print(single_target['box_cls_labels'][i])
+                # print("\box_reg_targets:",single_target['box_reg_targets'].shape)
+                # for i in range(single_target['box_reg_targets'].shape[-1]):
+                #     if single_target['box_reg_targets'][i].sum()!=0:
+                #         print(single_target['box_reg_targets'][i])
+                # print("\nbox_reg_targets:")
+                # for i in range(single_target['box_reg_targets'].shape[-1]):
+                        # print(single_target['box_reg_targets'][i])
+
                 target_list.append(single_target)
 
             if self.use_multihead:
