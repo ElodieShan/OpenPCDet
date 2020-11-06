@@ -210,6 +210,42 @@ class WeightedCrossEntropyLoss(nn.Module):
         loss = F.cross_entropy(input, target, reduction='none') * weights
         return loss
 
+class MSE(nn.Module):
+    '''
+    Do Deep Nets Really Need to be Deep?
+    http://papers.nips.cc/paper/5484-do-deep-nets-really-need-to-be-deep.pdf
+    '''
+    def __init__(self):
+        super(MSE, self).__init__()
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor ):
+        loss = F.mse_loss(input, target, reduction='none').sum(dim=-1)
+        # print("loss:",loss)
+        # print("loss.shape",loss.shape)
+        # loss = loss*weights
+        # for i in range(loss.shape[-1]):
+        #     if loss[0,i]>0:
+        #         print(loss[0,i])
+        return loss*weights
+
+class SoftTarget(nn.Module):
+    '''
+    Distilling the Knowledge in a Neural Network
+    https://arxiv.org/pdf/1503.02531.pdf
+    '''
+    def __init__(self, T):
+        super(SoftTarget, self).__init__()
+        self.T = T
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        # loss = F.kl_div(F.log_softmax(input/self.T, dim=1),
+                        # F.softmax(target/self.T, dim=1),
+                        # reduction='batchmean') * self.T * self.T
+        loss = F.kl_div(F.log_softmax(input/self.T, dim=1),
+                        F.softmax(target/self.T, dim=1),
+                        reduction='none') * self.T * self.T 
+        return loss*weights
+
 class HintL2Loss(nn.Module):
     def __init__(self):
         super(HintL2Loss, self).__init__()

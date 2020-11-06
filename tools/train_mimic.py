@@ -70,11 +70,13 @@ def load_teacher_model(args, cfg, data_set, logger, dist_test=False):
 
     # for param in model_teacher.parameters():
     #     param.requires_grad = False
-    model_teacher.cuda() # load model to GPU
     model_teacher.eval()
+    
+    # for param in model_teacher.parameters():
+    #     param.requires_grad = False
 
-    if dist_test:
-        model_teacher = nn.parallel.DistributedDataParallel(model_teacher, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+    model_teacher.cuda() # load model to GPU
+    model_teacher = nn.parallel.DistributedDataParallel(model_teacher, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     return model_teacher
 
 def main():
@@ -133,11 +135,13 @@ def main():
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs
     )
-    # load model teacher elodie
-    # model_teacher = None
-    train_set_teacher = copy.deepcopy(train_set)
-    cfg_teacher = copy.deepcopy(cfg)
-    model_teacher = load_teacher_model(args, cfg_teacher, train_set_teacher, logger, dist_test=dist_train)
+    # load model teacher elodise
+    if args.teacher_ckpt is not None:
+        train_set_teacher = copy.deepcopy(train_set)
+        cfg_teacher = copy.deepcopy(cfg)
+        model_teacher = load_teacher_model(args, cfg_teacher, train_set_teacher, logger, dist_test=dist_train)
+    else:
+        model_teacher = None
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
@@ -165,6 +169,8 @@ def main():
             last_epoch = start_epoch + 1
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
+    print("student device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()]:",[cfg.LOCAL_RANK % torch.cuda.device_count()])
+
     if dist_train:
         model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     logger.info(model)

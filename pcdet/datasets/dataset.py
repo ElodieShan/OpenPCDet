@@ -154,11 +154,12 @@ class DatasetTemplate(torch_data.Dataset):
         for cur_sample in batch_list:
             for key, val in cur_sample.items():
                 if isinstance (val,dict): # elodie
-                    data_dict2 = defaultdict(list)
+                    if key not in data_dict:
+                        data_dict[key] = defaultdict(list)
                     for key2,val2 in val.items():
-                        data_dict2[key2].append(val2)
-                    val = data_dict2
-                data_dict[key].append(val)
+                        data_dict[key][key2].append(val2)
+                else:
+                    data_dict[key].append(val)
         batch_size = len(batch_list)
         ret = {}
         # print("data_dict:",data_dict)

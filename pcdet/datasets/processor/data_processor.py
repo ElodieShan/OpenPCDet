@@ -91,7 +91,10 @@ class DataProcessor(object):
             data_dict['16lines']['voxels'] = voxels_16lines
             data_dict['16lines']['voxel_coords'] = coordinates_16lines
             data_dict['16lines']['voxel_num_points'] = num_points_16lines
-
+        # test
+        # data_dict['voxels'] = voxels_16lines
+        # data_dict['voxel_coords'] = coordinates_16lines
+        # data_dict['voxel_num_points'] = num_points_16lines
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):
@@ -138,7 +141,6 @@ class DataProcessor(object):
 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]
-
         # if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
         if data_type == "kitti":
             points_16lines = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
@@ -150,6 +152,7 @@ class DataProcessor(object):
         else:
             data_dict['16lines'] = {}
             data_dict['16lines']['points_16lines'] = points_16lines
+
         data_dict.pop('ring')
         return data_dict
 

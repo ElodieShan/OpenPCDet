@@ -35,7 +35,8 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
 
         model.train()
         optimizer.zero_grad()
-
+        
+        # print("batch:",batch)
         if model_teacher is not None: #elodie
             # print("\nbatch origin:\n",batch)
             batch_teacher = copy.deepcopy(batch)
@@ -45,8 +46,15 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             batch['voxel_coords'] = batch['16lines']['voxel_coords']
             batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
             batch.pop('16lines')
+            # loss, tb_dict, disp_dict = model_func(model, batch)
             loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher)
         else:
+            if "16lines" in batch: # dangerous
+                batch['points'] = batch['16lines']['points_16lines']
+                batch['voxels'] = batch['16lines']['voxels']
+                batch['voxel_coords'] = batch['16lines']['voxel_coords']
+                batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+                batch.pop('16lines')
             loss, tb_dict, disp_dict = model_func(model, batch)
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
