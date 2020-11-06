@@ -7,7 +7,7 @@ from ...utils import box_coder_utils, common_utils, loss_utils
 from .target_assigner.anchor_generator import AnchorGenerator
 from .target_assigner.atss_target_assigner import ATSSTargetAssigner
 from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
-
+import matplotlib.pyplot as plt
 
 class AnchorHeadTemplate(nn.Module):
     def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training, cls_score_thred=None):
@@ -129,6 +129,9 @@ class AnchorHeadTemplate(nn.Module):
             self.cls_soft_loss_beta = soft_losses_cfg.CLS_LOSS.get('BETA', 0.5)
             self.cls_soft_loss_modify = soft_losses_cfg.CLS_LOSS.get('MODIFY', None)
             self.cls_soft_loss_source = soft_losses_cfg.CLS_LOSS.get('SOURCE', None)
+            self.cls_soft_loss_source_weights = soft_losses_cfg.CLS_LOSS.get('SOURCE_WEIGHTS', None)
+            if self.cls_soft_loss_source_weights is None and self.cls_soft_loss_source is not None:
+                self.cls_soft_loss_source_weights = np.ones(len(self.cls_soft_loss_source))
 
         if self.reg_soft_loss_type is not None:
             self.add_module(
@@ -258,13 +261,13 @@ class AnchorHeadTemplate(nn.Module):
                     weights /= torch.clamp(weights.sum(-1, keepdim=True), min=1.0)
                 else:
                     weights = torch.full_like(positives_t, 0, dtype=cls_weights.dtype)
-                    for src in self.cls_soft_loss_source:
+                    for src, src_weights in zip(self.cls_soft_loss_source, self.cls_soft_loss_source_weights):
                         if src == "Teacher_TP":
-                            weights += weights_ttp
+                            weights += src_weights*weights_ttp
                         if src == "Teacher_HC":
-                            weights += weights_twhc
+                            weights += src_weights*weights_twhc
                         if src == "Student_FP":
-                            weights += weights_sfp
+                            weights += src_weights*weights_sfp
                 cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_sigmoid, cls_preds_teacher_sigmoid, weights=weights)
             
             # print("\n\n---------------------start------------:\n")
@@ -300,12 +303,12 @@ class AnchorHeadTemplate(nn.Module):
                 'rpn_soft_loss_cls': cls_soft_loss.item(),
                 'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
             }
-            print("cls loss before:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
+            # print("cls loss before:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
             if self.cls_soft_loss_modify is not None:
                 cls_loss = (1-self.cls_soft_loss_modify)*cls_loss + self.cls_soft_loss_modify * cls_soft_loss
             else:
                 cls_loss = cls_loss + cls_soft_loss
-        print("\tcls_loss:",cls_loss)
+        # print("\tcls_loss:",cls_loss)
 
         cls_loss = cls_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
         tb_dict = {
@@ -430,11 +433,59 @@ class AnchorHeadTemplate(nn.Module):
 
         return box_loss, tb_dict
 
+    def draw_features(self, feature_map_t, feature_map_s, id):
+        feature_map_t = feature_map_t[0]
+        im_t = np.squeeze(feature_map_t.detach().cpu().numpy())
+        im_t = np.transpose(im_t, [1, 2, 0])
+
+        feature_map_s = feature_map_s[0]
+        im_s = np.squeeze(feature_map_s.detach().cpu().numpy())
+        im_s = np.transpose(im_s, [1, 2, 0])
+
+        # plt.figure(figsize=(50,24))
+
+        fig,axs=plt.subplots(2,3,figsize=(10,16),constrained_layout=True)
+        for i in range(3):
+            cmap = 'jet'
+            ax = axs[0][i]
+            # ax = plt.subplot(2, 3, i+1, figsize=(10,10))
+            if i == 2:
+                ax.imshow(np.mean(im_t,axis=-1), cmap=plt.get_cmap(cmap))
+                print("im_t_mean:",np.mean(im_t,axis=-1))
+
+            else:
+                ax.imshow(im_t[50:150, :50, i], cmap=plt.get_cmap(cmap))
+                print("im_t[50:150, :50, i]:",im_t[50:150, :50, i])
+            ax.set_title("teacher_"+str(i),fontsize=12)
+
+            ax = axs[1][i]
+            # ax = plt.subplot(2, 3, i+4)
+            if i == 2:
+                ax.imshow(np.mean(im_s,axis=-1), cmap=plt.get_cmap(cmap))
+                print("im_s_mean:",np.mean(im_s,axis=-1))
+                print("np.mean(im_s,axis=-1):",np.mean(im_s,axis=-1).shape)
+            else:
+                ax.imshow(im_s[50:150, :50, i], cmap=plt.get_cmap(cmap))
+                print("im_s[50:150, :50, i]:",im_s[50:150, :50, i])
+
+            ax.set_title("student_"+str(i),fontsize=12)
+
+        
+        savefile = "/home/elodie/temp/" + str(id) + '.png'
+        plt.savefig(savefile, dpi=100)
+        plt.clf()
+        # plt.close()
+
     def get_hint_loss(self, student_data_dict=None, teacher_data_dict=None):
         hint_loss = 0.0
         for feature_ in self.hint_feature_list:
             student_feature = student_data_dict[feature_]
             teacher_feature = teacher_data_dict[feature_]
+            
+            frame_id =  student_data_dict['frame_id'][0]
+            print("frame_id:",frame_id)
+            self.draw_features(teacher_feature, student_feature, frame_id)
+
             hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
             batch_size = int(student_feature.shape[0])
             hint_loss_src = hint_loss_src.sum()/batch_size
