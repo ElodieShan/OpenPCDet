@@ -56,7 +56,10 @@ DATA_PROCESSOR:
       REMOVE_OUTSIDE_BOXES: True
       
     - NAME: downsample_points_16lines
-      REPLACE_ORI_POINTS: False
+      REPLACE_ORI_POINTS: {
+        'train': False,
+        'test': True
+      }
 
     - NAME: shuffle_points
       SHUFFLE_ENABLED: {

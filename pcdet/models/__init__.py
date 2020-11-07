@@ -28,11 +28,9 @@ def model_fn_decorator():
     def model_func(model, batch_dict, batch_dict_teacher=None, model_teacher=None): #elodie
         import copy
         load_data_to_gpu(batch_dict)
-        # batch_dict2 = copy.deepcopy(batch_dict)
-        # print("batch_dict:",batch_dict)
+
         if model_teacher is not None: # elodie
             load_data_to_gpu(batch_dict_teacher)
-            # print("model_teacher,'\nbatch_dict_teacher:",batch_dict_teacher)
             with torch.no_grad():
                 teacher_ret_dict, teacher_data_dict = model_teacher(batch_dict_teacher, is_teacher=True)
             ret_dict, tb_dict, disp_dict = model(batch_dict, teacher_ret_dict=teacher_ret_dict, teacher_data_dict=teacher_data_dict)

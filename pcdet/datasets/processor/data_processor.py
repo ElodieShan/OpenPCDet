@@ -147,7 +147,7 @@ class DataProcessor(object):
         if data_type == "nuscenes":
             points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
             points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])
-        if config.REPLACE_ORI_POINTS:
+        if config.REPLACE_ORI_POINTS[self.mode]:
             data_dict['points'] = points_16lines
         else:
             data_dict['16lines'] = {}
