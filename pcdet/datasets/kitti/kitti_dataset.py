@@ -329,9 +329,40 @@ class KittiDataset(DatasetTemplate):
 
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+        # num = 2
+        # eval_det_annos = eval_det_annos[:num]
+        # eval_gt_annos = eval_gt_annos[:num]
 
+        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True)
+        
         return ap_result_str, ap_dict
+
+    def get_detobject_iou(self, det_annos, **kwargs):
+        if 'annos' not in self.kitti_infos[0].keys():
+            return None, {}
+
+        from .kitti_object_eval_python import eval as kitti_eval
+
+        eval_det_annos = copy.deepcopy(det_annos)
+        eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        # num = 2
+        rets = kitti_eval.calculate_iou_partly(eval_det_annos, eval_gt_annos, metric=2, num_parts=100)
+        # print("eval_det_annos:",eval_det_annos[:num])
+        # print("eval_gt_annos:",eval_gt_annos[:num])
+        # print("rets:",rets)
+        # print("rets0:",rets[0])
+        # print("-----------")
+        for i in range(len(eval_det_annos)):
+            ret = rets[0][i]
+            # idx = ret.argmax(axis=-1)
+            iou = ret.max(axis=-1)
+            eval_det_annos[i]['iou'] = iou
+            # print(i,"\n",eval_det_annos[i])
+            # print("ret:",ret)
+            # print("idx:",idx)
+            # print("iou:",iou)
+
+        return eval_det_annos
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:

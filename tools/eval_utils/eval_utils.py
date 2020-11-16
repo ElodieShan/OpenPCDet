@@ -19,7 +19,7 @@ def statistics_info(cfg, ret_dict, metric, disp_dict):
         '(%d, %d) / %d' % (metric['recall_roi_%s' % str(min_thresh)], metric['recall_rcnn_%s' % str(min_thresh)], metric['gt_num'])
 
 
-def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None):
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, save_iou=False):
     result_dir.mkdir(parents=True, exist_ok=True)
 
     final_output_dir = result_dir / 'final_result' / 'data'
@@ -112,7 +112,28 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
         output_path=final_output_dir
     )
+    
+    if save_iou: #elodie
+        det_annos_w_iou = dataset.get_detobject_iou(det_annos)
+        with open(result_dir / 'result_w_iou.pkl', 'wb') as f:
+            pickle.dump(det_annos_w_iou, f)
 
+    if 'min_thresh_ret' in result_dict:
+        cls_recall = result_dict['min_thresh_ret']['recall_min_thresh']*100
+        cls_precision = result_dict['min_thresh_ret']['precision_min_thresh']*100
+        logger.info("------------------")
+        overlap = np.array([[0.0,0.0,0.0],[0.5,0.25,0.25],[0.7,0.5,0.5]])
+        for m, current_class in enumerate(cfg.CLASS_NAMES):
+            logger.info(current_class)
+            logger.info("              Easy     Mod      Hard")
+            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[0,m], cls_recall[m,0,2], cls_recall[m,1,2], cls_recall[m,2,2]))
+            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[0,m],cls_precision[m,0,2], cls_precision[m,1,2], cls_precision[m,2,2]))
+            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[1,m],cls_recall[m,0,1], cls_recall[m,1,1], cls_recall[m,2,1]))
+            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[1,m],cls_precision[m,0,1], cls_precision[m,1,1], cls_precision[m,2,1]))
+            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[2,m],cls_recall[m,0,0], cls_recall[m,1,0], cls_recall[m,2,0]))
+            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[2,m],cls_precision[m,0,0], cls_precision[m,1,0], cls_precision[m,2,0]))
+        logger.info("------------------")
+        result_dict.pop('min_thresh_ret')
     logger.info(result_str)
     ret_dict.update(result_dict)
 

@@ -8,8 +8,8 @@ PY_ARGS=${@:2}
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 --nproc_per_node=2 train.py --launcher pytorch \
---cfg_file cfgs/kitti_models/second_mimic_test.yaml \
---extra_tag test_wo_mimic
+--cfg_file cfgs/kitti_models/second_res_16lines.yaml \
+--extra_tag second_res_16lines
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 # --nproc_per_node=2 train.py --launcher pytorch \

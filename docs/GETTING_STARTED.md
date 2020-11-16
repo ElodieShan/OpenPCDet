@@ -63,12 +63,12 @@ python -m pcdet.datasets.nuscenes.nuscenes_dataset --func create_nuscenes_infos 
 ### Test and evaluate the pretrained models
 * Test with a pretrained model: 
 ```shell script
-python test.py --cfg_file ${CONFIG_FILE} --batch_size ${BATCH_SIZE} --ckpt ${CKPT}
+python3 test.py --cfg_file ${CONFIG_FILE} --batch_size ${BATCH_SIZE} --ckpt ${CKPT}
 ```
 
 * To test all the saved checkpoints of a specific training setting and draw the performance curve on the Tensorboard, add the `--eval_all` argument: 
 ```shell script
-python test.py --cfg_file ${CONFIG_FILE} --batch_size ${BATCH_SIZE} --eval_all
+python3 test.py --cfg_file ${CONFIG_FILE} --batch_size ${BATCH_SIZE} --eval_all
 ```
 
 * To test with multiple GPUs:

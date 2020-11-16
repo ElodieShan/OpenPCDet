@@ -250,13 +250,32 @@ class HintL2Loss(nn.Module):
     def __init__(self):
         super(HintL2Loss, self).__init__()
     
-    def forward(self, input: torch.Tensor, target: torch.Tensor):
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
         input = input.permute(0, 2, 3, 1) # [N,H,W,C]
+        input = input.view(input.shape[0], -1, input.shape[-1])
+
         target = target.permute(0, 2, 3, 1) # [N,H,W,C]
+        target = target.view(target.shape[0], -1, target.shape[-1])
 
-        l2_hint_loss = torch.pow((input - target), 2)
-        l2_hint_loss = l2_hint_loss.mean(dim=-1)
+        l2_hint_loss_src = torch.pow((input - target), 2)
 
+        if weights is None:
+            l2_hint_loss = l2_hint_loss_src.mean(dim=-1)
+        else:
+            l2_hint_loss = l2_hint_loss_src.sum(dim=-1)*weights
+            
+        # for i in range(l2_hint_loss_src.shape[1]):
+        # # for i in range(10):
+        #     if weights is not None and weights[0,i]>0:
+        #             print(i, "- student:\t", input[0,i,:20])
+        #             print(i, "- teacher:\t", target[0,i,:20])
+        #             print(i, "- weights:\t", weights[0,i])
+        #             print(i, "- l2_hint_loss_src:\t", l2_hint_loss_src[0,i,:20])
+        #             print(i, "- l2_hint_loss:\t", l2_hint_loss[0,i])
+
+        #             print("-----------\n")
+
+        # print("\nl2_hint_loss sum:",l2_hint_loss.sum(),"\n\n")
         return l2_hint_loss
 
 class WeightedKLDivergenceLoss(nn.Module):
@@ -286,7 +305,7 @@ class BoundedRegressionLoss(nn.Module):
         super(BoundedRegressionLoss, self).__init__()
         self.margin = margin
 
-    def forward(self, input_student: torch.Tensor, input_teacher: torch.Tensor, target: torch.Tensor):
+    def forward(self, input_student: torch.Tensor, input_teacher: torch.Tensor, target: torch.Tensor, target_teacher=None, weights=None):
         """
         Args:
             input_student/input_teacher: (B, #anchors, #codes) float tensor.
@@ -301,10 +320,16 @@ class BoundedRegressionLoss(nn.Module):
         target = torch.where(torch.isnan(target), input_student, target)  # ignore nan targets
 
         l2_student = torch.pow((input_student - target), 2)-self.margin
-        l2_teacher = torch.pow((input_teacher - target), 2)
+        if target_teacher is not None:
+            l2_teacher = torch.pow((input_teacher - target_teacher), 2)
+        else:
+            l2_teacher = torch.pow((input_teacher - target), 2)
 
         soft_loss = torch.where(l2_student>l2_teacher, l2_student, torch.full_like(l2_student,0))
-        soft_loss = soft_loss / (l2_student>l2_teacher).sum(1, keepdim=True).float()
+        if weights is None:
+            soft_loss = soft_loss / (l2_student>l2_teacher).sum(1, keepdim=True).float()
+        else:
+            soft_loss = soft_loss.sum(dim=-1)*weights
         # soft_loss = 
         # soft_loss = soft_loss.mean(dim=1)
         # print("soft_loss:",soft_loss)
