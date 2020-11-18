@@ -150,9 +150,11 @@ class AnchorHeadTemplate(nn.Module):
             self.reg_soft_loss_use_sin = soft_losses_cfg.REG_LOSS.get('USE_SIN', False)
 
         if self.hint_soft_loss_type is not None:
+            hint_soft_loss_temperature = soft_losses_cfg.HINT_LOSS.get('TEMPERATURE', 1)
+
             self.add_module(
                 'soft_hint_loss_func',
-                getattr(loss_utils, self.hint_soft_loss_type)()
+                getattr(loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature)
             )
             self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
             self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
@@ -276,11 +278,22 @@ class AnchorHeadTemplate(nn.Module):
             # print("cls_preds_teacher_recall: %.4f"%cls_preds_teacher_recall)
             
             # Student False Poitive
-            positives_s_fp = cls_preds_student_ret < 0
+            positives_s_f = (cls_preds_student_ret < 0).float()
+            positives_s_fn = torch.where(cls_targets>0, positives_s_f, torch.full_like(positives_s_f,0)) # including classify error and false negtive
+            positives_s_fp = torch.where(cls_targets==0, positives_s_f, torch.full_like(positives_s_f,0))
+
+            weights_sf = positives_s_f.float() / torch.clamp(positives_s_f.float().sum(-1, keepdim=True), min=1.0)
+
             weights_sfp = positives_s_fp.float() / torch.clamp(positives_s_fp.float().sum(-1, keepdim=True), min=1.0)
+            weights_sfn = positives_s_fn.float() / torch.clamp(positives_s_fn.float().sum(-1, keepdim=True), min=1.0)
+
             if self.cls_use_teacher_t_only:
                 weights_sfp = weights_sfp * positives_t_tp_tn
+                weights_sfn = weights_sfn * positives_t_tp_tn
+                weights_sf = weights_sf * positives_t_tp_tn
             self.soft_loss_weights['weights_sfp'] = weights_sfp
+            self.soft_loss_weights['weights_sfn'] = weights_sfn
+            self.soft_loss_weights['weights_sf'] = weights_sf
 
             ## Student cls accuracy
             # positives_s_tp_tn = cls_preds_student_ret >= 0
@@ -319,6 +332,10 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_twhc
                         if src == "Student_FP":
                             weights += src_weights*weights_sfp
+                        if src == "Student_FN":
+                            weights += src_weights*weights_sfn
+                        if src == "Student_F":
+                            weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
 
@@ -331,8 +348,14 @@ class AnchorHeadTemplate(nn.Module):
             # print("\nnegatives_teacher:",negatives_teacher_preds.sum(1, keepdim=True).float(),"\n")
             # cls_preds_sigmoid = torch.sigmoid(cls_preds)
 
+            # cls_preds_student_maxarg2 = torch.where(cls_targets==3, torch.full_like(cls_targets,1), torch.full_like(cls_targets,0))
+            # cls_preds_student_maxarg2 = torch.where(cls_preds_student_maxarg==2, cls_preds_student_maxarg2, torch.full_like(cls_targets,0))
+            # cls_preds_student_maxarg2_num = cls_preds_student_maxarg2.float().sum(-1, keepdim=True)
+            # if cls_preds_student_maxarg2_num.sum()>0:
+            #     print("cls_preds_student_maxarg2_num:",cls_preds_student_maxarg2_num)
             # for i in range(cls_targets.shape[-1]):
             # # for i in range(10):
+            #   if cls_preds_student_maxarg[0,i]==2 and cls_targets[0,i] ==3:
             #     print(i, "- cls_targets:\t", cls_targets[0,i])
             #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
             #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
@@ -346,9 +369,11 @@ class AnchorHeadTemplate(nn.Module):
             #     print(i, "- cls_preds_teacher P include high conf:\t", cls_preds_teacher_whc_ret[0,i],'\n')
             #     print(i, "- cls cls loss  :\t", cls_weights[0,i])
             #     print(i, "- cls reg loss  :\t", reg_weights[0,i])
+            #     print(i, "- cls soft loss GroundTruth weights:\t", reg_weights[0,i],'\n')
             #     print(i, "- cls soft loss Teacher_TP weights:\t", weights_ttp[0,i])
             #     print(i, "- cls soft loss Teacher_High Conf weights:\t", weights_twhc[0,i])
-            #     print(i, "- cls soft loss Student_FP Conf weights:\t", weights_sfp[0,i],'\n')
+            #     print(i, "- cls soft loss Student_FP weights:\t", weights_sfp[0,i],'\n')
+            #     print(i, "- cls soft loss Student_FN weights:\t", weights_sfn[0,i],'\n')
             #     print(i, "- cls soft loss weights:\t", weights[0,i])
             #     print(i, "- ",self.cls_soft_loss_type, " loss:\t", cls_soft_loss[0,i],'\n')
             #     print("-----------")
@@ -446,6 +471,10 @@ class AnchorHeadTemplate(nn.Module):
                         weights += src_loss_weights*self.soft_loss_weights['weights_twhc']
                     if src == "Student_FP":
                         weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
+                    if src == "Student_FN":
+                        weights += src_weights*self.soft_loss_weights['weights_sfn']
+                    if src == "Student_F":
+                        weights += src_weights*self.soft_loss_weights['weights_sf']
                     if src == "GroundTruth":
                         weights += src_loss_weights*self.soft_loss_weights['weights_gt']
             else:
@@ -544,32 +573,35 @@ class AnchorHeadTemplate(nn.Module):
         im_s = np.transpose(im_s, [1, 2, 0])
 
         # plt.figure(figsize=(50,24))
-
-        fig,axs=plt.subplots(2,3,figsize=(10,16),constrained_layout=True)
-        for i in range(3):
+        channel_num = 15
+        fig,axs=plt.subplots(2,channel_num,figsize=(channel_num*3,16),constrained_layout=True)
+        for i in range(channel_num):
             cmap = 'jet'
             ax = axs[0][i]
             # ax = plt.subplot(2, 3, i+1, figsize=(10,10))
-            if i == 2:
+            if i == channel_num-1:
                 ax.imshow(np.mean(im_t,axis=-1), cmap=plt.get_cmap(cmap))
                 print("im_t_mean:",np.mean(im_t,axis=-1))
+                ax.set_title("teacher_mean")
 
             else:
                 ax.imshow(im_t[50:150, :50, i], cmap=plt.get_cmap(cmap))
                 print("im_t[50:150, :50, i]:",im_t[50:150, :50, i])
-            ax.set_title("teacher_"+str(i),fontsize=12)
+                ax.set_title("teacher_"+str(i),fontsize=12)
 
             ax = axs[1][i]
             # ax = plt.subplot(2, 3, i+4)
-            if i == 2:
+            if i == channel_num-1:
                 ax.imshow(np.mean(im_s,axis=-1), cmap=plt.get_cmap(cmap))
                 print("im_s_mean:",np.mean(im_s,axis=-1))
                 print("np.mean(im_s,axis=-1):",np.mean(im_s,axis=-1).shape)
+                ax.set_title("student_mean")
+
             else:
                 ax.imshow(im_s[50:150, :50, i], cmap=plt.get_cmap(cmap))
                 print("im_s[50:150, :50, i]:",im_s[50:150, :50, i])
 
-            ax.set_title("student_"+str(i),fontsize=12)
+                ax.set_title("student_"+str(i),fontsize=12)
 
         
         savefile = "/home/elodie/temp/" + str(id) + '.png'
@@ -590,6 +622,10 @@ class AnchorHeadTemplate(nn.Module):
                     weights += src_loss_weights*self.soft_loss_weights['weights_twhc']
                 if src == "Student_FP":
                     weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
+                if src == "Student_FN":
+                    weights += src_weights*self.soft_loss_weights['weights_sfn']
+                if src == "Student_F":
+                    weights += src_weights*self.soft_loss_weights['weights_sf']
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
         for feature_ in self.hint_feature_list:
@@ -599,21 +635,25 @@ class AnchorHeadTemplate(nn.Module):
             # frame_id =  student_data_dict['frame_id'][0]
             # print("frame_id:",frame_id)
             # self.draw_features(teacher_feature, student_feature, frame_id)
-            batch_size = int(student_feature.shape[0])
-            weights2 = weights.view(batch_size, -1, self.num_anchors_per_location)
-            weights3 = weights2.sum(dim=-1)
-            # for i in range(weights2.shape[1]):
-            #     if weights2[0,i].sum()>0:
-            #         print(i, " - weights2:",weights2[0,i])
-            #         print(i, " - weights3:",weights3[0,i])
-            #         for j in range(self.num_anchors_per_location):
-            #             index = i*self.num_anchors_per_location+j
-            #             print(index,' - weights',weights[0,index])
-            #         print('------------')
 
-            hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights3)
-            
+            batch_size = int(student_feature.shape[0])
+
+
+            # student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+            # student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
+
+            # teacher_feature = teacher_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+            # teacher_feature = teacher_feature.view(teacher_feature.shape[0], -1, teacher_feature.shape[-1])
+            if weights is not None:
+                weights = weights.view(batch_size, -1, self.num_anchors_per_location)
+                weights = weights.sum(dim=-1)
+                hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
+            else:
+                hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
             hint_loss = hint_loss_src.sum()/batch_size
+            # print("hint_loss:",hint_loss)
+
+
             hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss
         
         tb_dict = {

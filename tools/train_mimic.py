@@ -18,10 +18,15 @@ from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
 
+from pathlib import Path
+import yaml
+from easydict import EasyDict
+import torch.distributed as dist
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
+    parser.add_argument('--teacher_cfg_file', type=str, default=None, help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
@@ -50,11 +55,22 @@ def parse_config():
     cfg_from_yaml_file(args.cfg_file, cfg)
     cfg.TAG = Path(args.cfg_file).stem
     cfg.EXP_GROUP_PATH = '/'.join(args.cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
-
+    
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs, cfg)
 
-    return args, cfg
+    if args.teacher_cfg_file is not None:
+        cfg_teacher = EasyDict()
+        cfg_teacher.ROOT_DIR = (Path(__file__).resolve().parent / '../').resolve()
+        cfg_teacher.LOCAL_RANK = 0
+        cfg_from_yaml_file(args.teacher_cfg_file, cfg_teacher)
+        cfg_teacher.TAG = Path(args.teacher_cfg_file).stem
+        cfg_teacher.EXP_GROUP_PATH = '/'.join(args.teacher_cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
+        if args.set_cfgs is not None:
+            cfg_from_list(args.set_cfgs, cfg_teacher)
+        return args, cfg, cfg_teacher
+        print("cfg_teacher:",cfg_teacher)
+    return args, cfg, None
 
 def load_teacher_model(args, cfg, data_set, logger, dist_test=False):
     # ckpt_path = "/home/elodie/OpenPCDet/output/kitti_models/pv_rcnn_without_planes/default/ckpt/checkpoint_epoch_80.pth"
@@ -80,7 +96,7 @@ def load_teacher_model(args, cfg, data_set, logger, dist_test=False):
     return model_teacher
 
 def main():
-    args, cfg = parse_config()
+    args, cfg, cfg_teacher = parse_config()
     if args.launcher == 'none':
         dist_train = False
         total_gpus = 1
@@ -88,7 +104,10 @@ def main():
         total_gpus, cfg.LOCAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
             args.tcp_port, args.local_rank, backend='nccl'
         )
+        if cfg_teacher is not None:
+            cfg_teacher.LOCAL_RANK = dist.get_rank()
         dist_train = True
+
 
     if args.batch_size is None:
         args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
@@ -138,7 +157,8 @@ def main():
     # load model teacher elodise
     if args.teacher_ckpt is not None:
         train_set_teacher = copy.deepcopy(train_set)
-        cfg_teacher = copy.deepcopy(cfg)
+        if cfg_teacher is None:
+            cfg_teacher = copy.deepcopy(cfg)
         model_teacher = load_teacher_model(args, cfg_teacher, train_set_teacher, logger, dist_test=dist_train)
     else:
         model_teacher = None

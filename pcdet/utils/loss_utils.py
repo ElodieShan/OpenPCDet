@@ -68,6 +68,11 @@ class SigmoidFocalClassificationLoss(nn.Module):
 
         loss = focal_weight * bce_loss
 
+        # bce_loss2 = F.binary_cross_entropy_with_logits(input, target, reduce=False) # combine sigmoid and BCE
+        # pt2 = torch.exp(-bce_loss2)
+        # focal_weight2 = alpha_weight * (1-pt2)**self.gamma
+        # F_loss = focal_weight2 * bce_loss2
+
         if weights.shape.__len__() == 2 or \
                 (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
             weights = weights.unsqueeze(-1)
@@ -76,6 +81,60 @@ class SigmoidFocalClassificationLoss(nn.Module):
 
         return loss * weights
 
+# class SoftmaxFocalClassificationLoss(nn.Module):
+#     """
+#     Softmax focal cross entropy loss.
+#     """
+
+#     def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
+#         """
+#         Args:
+#             gamma: Weighting parameter to balance loss for hard and easy examples.
+#             alpha: Weighting parameter to balance loss for positive and negative examples.
+#         """
+#         super(SoftmaxFocalClassificationLoss, self).__init__()
+#         self.alpha = alpha
+#         self.gamma = gamma
+
+#     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+#         """
+#         Args:
+#             input: (B, #anchors, #classes) float tensor.
+#                 Predicted logits for each class
+#             target: (B, #anchors, #classes) float tensor.
+#                 One-hot encoded classification targets
+#             weights: (B, #anchors) float tensor.
+#                 Anchor-wise weights.
+
+#         Returns:
+#             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
+#         """
+#         pred_softmax = F.softmax(input,dim=-1)
+#         # print("pred_sigmoid:",pred_sigmoid)
+#         # print("target:",target)
+#         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
+#         # pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
+#         # focal_weight = alpha_weight * torch.pow(pt, self.gamma)
+
+#         # bce_loss = self.sigmoid_cross_entropy_with_logits(input, target)
+
+#         # loss = focal_weight * bce_loss
+#         input = input.permute(0, 2, 1)
+#         bce_loss2 = F.cross_entropy(input, target, reduce=False)
+#         pt2 = torch.exp(-bce_loss2)
+#         pt = target * (1.0 - pred_softmax) + (1.0 - target) * pred_softmax
+#         print("pt2:",pt2)
+#         print("pt:",pt)
+#         focal_weight2 = alpha_weight * (1-pt2)**self.gamma
+#         F_loss = focal_weight2 * bce_loss2
+
+#         if weights.shape.__len__() == 2 or \
+#                 (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
+#             weights = weights.unsqueeze(-1)
+
+#         assert weights.shape.__len__() == loss.shape.__len__()
+
+#         return loss * weights
 
 class WeightedSmoothL1Loss(nn.Module):
     """
@@ -228,28 +287,11 @@ class MSE(nn.Module):
         #         print(loss[0,i])
         return loss*weights
 
-class SoftTarget(nn.Module):
-    '''
-    Distilling the Knowledge in a Neural Network
-    https://arxiv.org/pdf/1503.02531.pdf
-    '''
-    def __init__(self, T):
-        super(SoftTarget, self).__init__()
+class HintL2Loss(nn.Module):
+    def __init__(self, T=1.0):
+        super(HintL2Loss, self).__init__()
         self.T = T
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        # loss = F.kl_div(F.log_softmax(input/self.T, dim=1),
-                        # F.softmax(target/self.T, dim=1),
-                        # reduction='batchmean') * self.T * self.T
-        loss = F.kl_div(F.log_softmax(input/self.T, dim=1),
-                        F.softmax(target/self.T, dim=1),
-                        reduction='none') * self.T * self.T 
-        return loss*weights
-
-class HintL2Loss(nn.Module):
-    def __init__(self):
-        super(HintL2Loss, self).__init__()
-    
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
         input = input.permute(0, 2, 3, 1) # [N,H,W,C]
         input = input.view(input.shape[0], -1, input.shape[-1])
@@ -277,6 +319,47 @@ class HintL2Loss(nn.Module):
 
         # print("\nl2_hint_loss sum:",l2_hint_loss.sum(),"\n\n")
         return l2_hint_loss
+
+
+class HintKLDivergenceLoss(nn.Module):
+    '''
+    Distilling the Knowledge in a Neural Network
+    https://arxiv.org/pdf/1503.02531.pdf
+    '''
+    def __init__(self, T=1.0, weighted=True):
+        super(HintKLDivergenceLoss, self).__init__()
+        self.T = T
+        self.weighted = weighted
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        # loss = F.kl_div(F.log_softmax(input/self.T, dim=1),
+                        # F.softmax(target/self.T, dim=1),
+                        # reduction='batchmean') * self.T * self.T
+        # print("input",input)
+        # input = input.view(input.shape[0], input.shape[1], -1)
+        # target = target.view(target.shape[0], target.shape[1], -1)
+        # loss = F.kl_div(F.log_softmax(input/self.T, dim=-1),
+        #                 F.softmax(target/self.T, dim=-1),
+        #                 reduction='none') * self.T * self.T 
+        # print("loss:",loss)
+        # loss = loss.permute(0, 2, 1).sum(dim=-1)
+        input = input.permute(0, 2, 3, 1) # [N,H,W,C]
+        input = input.view(input.shape[0], -1, input.shape[-1])
+
+        target = target.permute(0, 2, 3, 1) # [N,H,W,C]
+        target = target.view(target.shape[0], -1, target.shape[-1])
+        loss = F.kl_div(F.log_softmax(input/self.T, dim=-1),
+                        F.softmax(target/self.T, dim=-1),
+                        reduction='none') * self.T * self.T 
+        loss = loss.sum(dim=-1)
+
+        if self.weighted:
+            loss = loss * weights
+        else:
+            loss = loss.mean(dim=-1)
+        # print("loss:",loss.sum()/2)
+
+        return loss
 
 class WeightedKLDivergenceLoss(nn.Module):
     def __init__(self, weighted=True):
@@ -337,6 +420,82 @@ class BoundedRegressionLoss(nn.Module):
         #     if soft_loss2[0,i] > 0:
         #         print(soft_loss2[0,i])
         return soft_loss
+
+
+
+class MMD(nn.Module):
+    def __init__(self, kernel_mul=2.0, kernel_num=5, fix_sigma=None):
+        super(MMD, self).__init__()
+        """
+        kernel_mul: kernel bandwith
+        kernel_num: kernel_num
+        fix_sigma: fix std
+        """
+        self.kernel_mul = kernel_mul
+        self.kernel_num = kernel_num
+        self.fix_sigma = fix_sigma
+
+    def guassian_kernel(self, source, target):
+        """ kernel mat
+        source: batch * sample_size_1 * feature_size
+        target: batch * sample_size_2 * feature_size
+
+            return: [(sample_size_1 + sample_size_2) * (sample_size_1 + sample_size_2)
+                            [	K_ss K_st
+                                K_ts K_tt ]]
+        """
+        batch_size = int(source.size()[0])
+        n_samples = int(source.size()[1]) + int(target.size()[1])
+
+        total = torch.cat([source, target], dim=1)  # 合并在一起
+
+        total0 = total.unsqueeze(1).expand(int(total.size(0)), \
+                                        int(total.size(1)), \
+                                        int(total.size(1)), \
+                                        int(total.size(2)))
+        total1 = total.unsqueeze(2).expand(int(total.size(0)), \
+                                        int(total.size(1)), \
+                                        int(total.size(1)), \
+                                        int(total.size(2)))
+        L2_distance = torch.pow((total0 - total1), 2).sum(-1)  # kernel |x-y|
+
+        # kernel bandwidth
+        if self.fix_sigma:
+            bandwidth = self.fix_sigma
+        else:
+            bandwidth = torch.sum(L2_distance.data,dim=-1).sum(dim=-1) / (n_samples ** 2 - n_samples)
+
+        bandwidth /= self.kernel_mul ** (self.kernel_num // 2)
+        self.kernel_num_ = torch.tensor(np.arange(self.kernel_num))
+        self.kernel_mul_ = torch.tensor(np.ones(self.kernel_num)*self.kernel_mul).long()
+        bandwidth_list = torch.matmul(bandwidth.view(-1,1), torch.pow(self.kernel_mul_,self.kernel_num_).double().view(1,-1))
+
+        # exp(-|x-y|/bandwith)
+        for i in range(batch_size):
+            kernel_val_batch = [torch.exp(-L2_distance[i] / bandwidth_temp) for \
+                        bandwidth_temp in bandwidth_list[i]]
+            if i == 0:
+                kernel_val = sum(kernel_val_batch).unsqueeze(0)
+            else:
+                kernel_val = torch.cat((kernel_val, sum(kernel_val_batch).unsqueeze(0)))
+
+        return kernel_val
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        batch_size = int(input.size()[0])
+        input = input.view(batch_size,-1,input.shape[-1])
+        target = target.view(batch_size,-1,target.shape[-1])
+        n_samples = int(input.size()[1])
+
+        kernels = self.guassian_kernel(input, target)
+
+        XX = kernels[:, :n_samples, :n_samples]  # input<->input
+        YY = kernels[:, n_samples:, n_samples:]  # Target<->Target
+        XY = kernels[:, :n_samples, n_samples:]  # input<->Target
+        YX = kernels[:, n_samples:, :n_samples]  # Target<->input
+        loss_src = XX + YY - XY - YX
+        loss = loss_src.view(batch_size,-1).mean(dim=-1)
+        return loss
 
 
 

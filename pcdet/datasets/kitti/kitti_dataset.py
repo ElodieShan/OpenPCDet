@@ -332,6 +332,17 @@ class KittiDataset(DatasetTemplate):
         # num = 2
         # eval_det_annos = eval_det_annos[:num]
         # eval_gt_annos = eval_gt_annos[:num]
+        
+        # Pedestrian --> Cyclist
+        # for det_anno in eval_det_annos:
+        #     det_anno_name = []
+        #     for i in range(det_anno['name'].shape[0]):
+        #         if det_anno['name'][i] == 'Pedestrian':
+        #             name = 'Cyclist'
+        #         else:
+        #             name = det_anno['name'][i]
+        #         det_anno_name.append(name)
+        #     det_anno['name'] = np.array(det_anno_name)
 
         ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True)
         
