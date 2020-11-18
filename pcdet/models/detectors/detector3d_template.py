@@ -210,7 +210,8 @@ class Detector3DTemplate(nn.Module):
                 cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
                 src_cls_preds = cls_preds
                 if not batch_dict['cls_preds_normalized']:
-                    cls_preds = [torch.sigmoid(x) for x in cls_preds]
+                    # cls_preds = [torch.sigmoid(x) for x in cls_preds]
+                    cls_preds = [torch.softmax(x, dim=-1) for x in cls_preds] # elodie softmax
 
             if post_process_cfg.NMS_CONFIG.MULTI_CLASSES_NMS:
                 if not isinstance(cls_preds, list):
@@ -239,7 +240,8 @@ class Detector3DTemplate(nn.Module):
                 final_labels = torch.cat(pred_labels, dim=0)
                 final_boxes = torch.cat(pred_boxes, dim=0)
             else:
-                cls_preds, label_preds = torch.max(cls_preds, dim=-1)
+                # cls_preds, label_preds = torch.max(cls_preds, dim=-1)
+                cls_preds, label_preds = torch.max(cls_preds[...,1:], dim=-1) #elodie softmax
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
                     label_preds = batch_dict[label_key][index]

@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 from . import box_utils
 
@@ -81,60 +82,168 @@ class SigmoidFocalClassificationLoss(nn.Module):
 
         return loss * weights
 
-# class SoftmaxFocalClassificationLoss(nn.Module):
-#     """
-#     Softmax focal cross entropy loss.
-#     """
+class SoftmaxFocalClassificationLoss1(nn.Module):
+    """
+    Softmax focal cross entropy loss.
+    """
 
-#     def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
-#         """
-#         Args:
-#             gamma: Weighting parameter to balance loss for hard and easy examples.
-#             alpha: Weighting parameter to balance loss for positive and negative examples.
-#         """
-#         super(SoftmaxFocalClassificationLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
+    def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
+        """
+        Args:
+            gamma: Weighting parameter to balance loss for hard and easy examples.
+            alpha: Weighting parameter to balance loss for positive and negative examples.
+        """
+        super(SoftmaxFocalClassificationLoss1, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
 
-#     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-#         """
-#         Args:
-#             input: (B, #anchors, #classes) float tensor.
-#                 Predicted logits for each class
-#             target: (B, #anchors, #classes) float tensor.
-#                 One-hot encoded classification targets
-#             weights: (B, #anchors) float tensor.
-#                 Anchor-wise weights.
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        """
+        Args:
+            input: (B, #anchors, #classes) float tensor.
+                Predicted logits for each class
+            target: (B, #anchors, #classes) float tensor.
+                One-hot encoded classification targets
+            weights: (B, #anchors) float tensor.
+                Anchor-wise weights.
 
-#         Returns:
-#             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
-#         """
-#         pred_softmax = F.softmax(input,dim=-1)
-#         # print("pred_sigmoid:",pred_sigmoid)
-#         # print("target:",target)
-#         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
-#         # pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
-#         # focal_weight = alpha_weight * torch.pow(pt, self.gamma)
+        Returns:
+            weighted_loss: (B, #anchors, #classes) float tensor after weighting.
+        """
+        pred_softmax = F.softmax(input,dim=-1)
+        # print("pred_sigmoid:",pred_sigmoid)
+        # print("target:",target)
+        alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
 
-#         # bce_loss = self.sigmoid_cross_entropy_with_logits(input, target)
+        bce_loss = F.binary_cross_entropy(pred_softmax, target, reduce=False, reduction='none')
+        pt = torch.exp(-bce_loss)
 
-#         # loss = focal_weight * bce_loss
-#         input = input.permute(0, 2, 1)
-#         bce_loss2 = F.cross_entropy(input, target, reduce=False)
-#         pt2 = torch.exp(-bce_loss2)
-#         pt = target * (1.0 - pred_softmax) + (1.0 - target) * pred_softmax
-#         print("pt2:",pt2)
-#         print("pt:",pt)
-#         focal_weight2 = alpha_weight * (1-pt2)**self.gamma
-#         F_loss = focal_weight2 * bce_loss2
+        focal_weight = alpha_weight * (1-pt)**self.gamma
+        loss = focal_weight * bce_loss
 
-#         if weights.shape.__len__() == 2 or \
-#                 (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
-#             weights = weights.unsqueeze(-1)
+        if weights.shape.__len__() == 2 or \
+                (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
+            weights = weights.unsqueeze(-1)
 
-#         assert weights.shape.__len__() == loss.shape.__len__()
+        assert weights.shape.__len__() == loss.shape.__len__()
+        return loss * weights
 
-#         return loss * weights
+class SoftmaxFocalClassificationLoss2(nn.Module):
+    """
+    Softmax focal cross entropy loss.
+    """
+
+    def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
+        """
+        Args:
+            gamma: Weighting parameter to balance loss for hard and easy examples.
+            alpha: Weighting parameter to balance loss for positive and negative examples.
+        """
+        super(SoftmaxFocalClassificationLoss2, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        """
+        Args:
+            input: (B, #anchors, #classes) float tensor.
+                Predicted logits for each class
+            target: (B, #anchors, #classes) float tensor.
+                One-hot encoded classification targets
+            weights: (B, #anchors) float tensor.
+                Anchor-wise weights.
+
+        Returns:
+            weighted_loss: (B, #anchors, #classes) float tensor after weighting.
+        """
+
+        target = target.argmax(dim=-1)
+
+        alpha_weight = torch.where(target>0, torch.full_like(target,self.alpha, dtype=torch.float), torch.full_like(target,1-self.alpha, dtype=torch.float))
+
+        input = input.permute(0, 2, 1)
+        bce_loss = F.cross_entropy(input, target, reduce=False, reduction='none')
+        pt = torch.exp(-bce_loss)
+
+        focal_weight = alpha_weight * (1-pt)**self.gamma
+        loss = focal_weight * bce_loss
+
+        assert weights.shape.__len__() == loss.shape.__len__()
+        return loss * weights
+
+
+
+class FocalLoss(nn.Module):
+    """
+        softmax
+        This criterion is a implemenation of Focal Loss, which is proposed in 
+        Focal Loss for Dense Object Detection.
+
+            Loss(x, class) = - \alpha (1-softmax(x)[class])^gamma \log(softmax(x)[class])
+
+        The losses are averaged across observations for each minibatch.
+
+        Args:
+            alpha(1D Tensor, Variable) : the scalar factor for this criterion
+            gamma(float, double) : gamma > 0; reduces the relative loss for well-classiﬁed examples (p > .5), 
+                                   putting more focus on hard, misclassiﬁed examples
+            size_average(bool): By default, the losses are averaged over observations for each minibatch.
+                                However, if the field size_average is set to False, the losses are
+                                instead summed for each minibatch.
+
+
+    """
+    def __init__(self, gamma: float = 2.0, alpha=None):
+        """
+        Args:
+            gamma: Weighting parameter to balance loss for hard and easy examples.
+            alpha: Weighting parameter to balance loss for positive and negative examples.
+        """
+        super(FocalLoss, self).__init__()
+        # self.alpha = alpha
+        class_num=4
+        if alpha is None:
+            self.alpha = Variable(torch.ones(class_num, 1))
+        else:
+            if isinstance(alpha, Variable):
+                self.alpha = alpha
+            else:
+                self.alpha = Variable(alpha)
+        self.gamma = gamma
+
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor, weights: torch.Tensor):
+        N = inputs.size(0)
+        C = inputs.size(1)
+        P = F.softmax(inputs)
+
+        class_mask = inputs.data.new(N, C).fill_(0)
+        class_mask = Variable(class_mask)
+        targets = targets.argmax(dim=-1)
+        ids = targets.view(-1, 1)
+        class_mask.scatter_(1, ids.data, 1.)
+        #print(class_mask)
+
+        if inputs.is_cuda and not self.alpha.is_cuda:
+            self.alpha = self.alpha.cuda()
+        alpha = self.alpha[ids.data.view(-1)]
+
+        probs = (P*class_mask).sum(1).view(-1,1)
+
+        log_p = probs.log()
+        #print('probs size= {}'.format(probs.size()))
+        #print(probs)
+
+        batch_loss = -alpha*(torch.pow((1-probs), self.gamma))*log_p 
+        #print('-----bacth_loss------')
+        #print(batch_loss)
+
+
+        if self.size_average:
+            loss = batch_loss.mean()
+        else:
+            loss = batch_loss.sum()
+        return loss
 
 class WeightedSmoothL1Loss(nn.Module):
     """

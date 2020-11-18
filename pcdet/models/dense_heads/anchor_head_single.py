@@ -15,9 +15,9 @@ class AnchorHeadSingle(AnchorHeadTemplate):
         self.num_anchors_per_location = sum(self.num_anchors_per_location)
 
         self.conv_cls = nn.Conv2d(
-            input_channels, self.num_anchors_per_location * self.num_class,
+            input_channels, self.num_anchors_per_location * (self.num_class+1),
             kernel_size=1
-        )
+        ) # add background class 0:background 1:car 2:ped 3:cyclist # elodie
         self.conv_box = nn.Conv2d(
             input_channels, self.num_anchors_per_location * self.box_coder.code_size,
             kernel_size=1

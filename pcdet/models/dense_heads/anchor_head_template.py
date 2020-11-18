@@ -87,7 +87,10 @@ class AnchorHeadTemplate(nn.Module):
     def build_losses(self, losses_cfg):
         self.add_module(
             'cls_loss_func',
-            loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
+            # loss_utils.FocalLoss(gamma=2.0)
+
+            loss_utils.SoftmaxFocalClassificationLoss2(alpha=0.25, gamma=2.0)
+            # loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
         )
         reg_loss_name = 'WeightedSmoothL1Loss' if losses_cfg.get('REG_LOSS_TYPE', None) is None \
             else losses_cfg.REG_LOSS_TYPE
@@ -201,8 +204,8 @@ class AnchorHeadTemplate(nn.Module):
             *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
         )
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
-        cls_preds = cls_preds.view(batch_size, -1, self.num_class)
-        one_hot_targets = one_hot_targets[..., 1:]
+        cls_preds = cls_preds.view(batch_size, -1, (self.num_class+1))
+        # one_hot_targets = one_hot_targets[..., 1:] # elodie softmax
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
         
