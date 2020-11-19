@@ -66,7 +66,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         if cfg.LOCAL_RANK == 0:
             progress_bar.set_postfix(disp_dict)
             progress_bar.update()
-
+            
     if cfg.LOCAL_RANK == 0:
         progress_bar.close()
 
@@ -78,6 +78,12 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     logger.info('*************** Performance of EPOCH %s *****************' % epoch_id)
     sec_per_example = (time.time() - start_time) / len(dataloader.dataset)
     logger.info('Generate label finished(sec_per_example: %.4f second).' % sec_per_example)
+    # cls recall & precision
+    logger.info("==================== Anchor Cls Result =================")
+    logger.info("              Car     Pedestrian      Cyclist")
+    logger.info("recall:   %.2f    %.2f        %.2f"%(ret_dict['cls_recall'][0], ret_dict['cls_recall'][1], ret_dict['cls_recall'][2]))
+    logger.info("precison: %.2f    %.2f        %.2f \n"%(ret_dict['cls_precision'][0], ret_dict['cls_precision'][1], ret_dict['cls_precision'][2]))
+    logger.info("=======================================================")
 
     if cfg.LOCAL_RANK != 0:
         return {}
