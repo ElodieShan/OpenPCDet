@@ -202,7 +202,7 @@ class Detector3DTemplate(nn.Module):
                 cls_preds = batch_dict['batch_cls_preds'][batch_mask]
 
                 src_cls_preds = cls_preds
-                assert cls_preds.shape[1] in [1, self.num_class]
+                assert cls_preds.shape[1] in [1, self.num_class, (self.num_class+1)]
 
                 if not batch_dict['cls_preds_normalized']:
                     cls_preds = torch.sigmoid(cls_preds)

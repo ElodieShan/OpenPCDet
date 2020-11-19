@@ -89,7 +89,7 @@ class AnchorHeadTemplate(nn.Module):
             'cls_loss_func',
             # loss_utils.FocalLoss(gamma=2.0)
 
-            loss_utils.SoftmaxFocalClassificationLoss2(alpha=0.25, gamma=2.0)
+            loss_utils.SoftmaxFocalClassificationLoss1(alpha=0.25, gamma=2.0)
             # loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
         )
         reg_loss_name = 'WeightedSmoothL1Loss' if losses_cfg.get('REG_LOSS_TYPE', None) is None \
@@ -210,7 +210,7 @@ class AnchorHeadTemplate(nn.Module):
         cls_loss = cls_loss_src.sum() / batch_size
         
         # Student False Positive:  True Positive >0, False Positive <0 elodie
-        cls_preds_student_sigmoid = torch.sigmoid(cls_preds)
+        cls_preds_student_sigmoid = torch.softmax(cls_preds,dim=-1)
         cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_sigmoid>self.cls_score_thred,\
                              torch.full_like(cls_preds_student_sigmoid,1), torch.full_like(cls_preds_student_sigmoid,0))
         cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
