@@ -47,6 +47,11 @@ class AnchorHeadTemplate(nn.Module):
             self.dir_soft_loss_type = None
             self.hint_soft_loss_type = None
         
+        self.pr_dict={
+            "cls_tp_num":torch.from_numpy(np.ones(self.num_class)),
+            "cls_fp_num":torch.from_numpy(np.ones(self.num_class)),
+            "cls_fn_num":torch.from_numpy(np.ones(self.num_class)),
+        }
 
     @staticmethod
     def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7):
@@ -177,6 +182,38 @@ class AnchorHeadTemplate(nn.Module):
             self.anchors, gt_boxes
         )
         return targets_dict
+
+    def get_cls_pr_dict(self):
+        box_cls_labels = self.forward_ret_dict['box_cls_labels']
+        cared = box_cls_labels >= 0  # [N, num_anchors]
+        cls_targets = box_cls_labels * cared.type_as(box_cls_labels)
+        cls_targets = cls_targets.unsqueeze(dim=-1)
+        cls_targets = cls_targets.squeeze(dim=-1)
+
+        cls_preds = self.forward_ret_dict['cls_preds']
+        cls_preds = cls_preds.view(cls_preds.shape[0], -1, (self.num_class+1))
+        cls_preds = torch.softmax(cls_preds,dim=-1)
+        cls_preds = cls_preds[...,1:]
+        cls_preds_hot_wo_bg =  torch.where(cls_preds>self.cls_score_thred,\
+                             torch.full_like(cls_preds,1), torch.full_like(cls_preds,0))
+        cls_preds_hot_wo_bg_maxarg = cls_preds_hot_wo_bg.argmax(dim=-1)+1
+        cls_preds_one_hot_wo_bg_sum = cls_preds_hot_wo_bg.sum(dim=-1)
+        cls_preds_maxarg = torch.where(cls_preds_one_hot_wo_bg_sum>0, cls_preds_hot_wo_bg_maxarg, torch.full_like(cls_preds_hot_wo_bg_maxarg,0))
+        cls_preds_ret = torch.where(cls_preds_maxarg==cls_targets.long(), cls_preds_maxarg, torch.full_like(cls_preds_maxarg,-1, dtype=cls_preds_maxarg.dtype))
+
+        for i in range(len(self.class_names)):
+            positives_preds = torch.where(cls_preds_maxarg==(i+1), cls_preds_ret, torch.full_like(cls_preds_ret,0, dtype=cls_preds_ret.dtype))
+            preds_tp = positives_preds>0
+            self.pr_dict['cls_tp_num'][i] += preds_tp.float().sum()
+            preds_fp = positives_preds<0
+            self.pr_dict['cls_fp_num'][i] += preds_fp.float().sum()
+            positives_gt = torch.where(cls_targets==(i+1), cls_preds_ret, torch.full_like(cls_preds_ret,0, dtype=cls_preds_ret.dtype))
+            preds_fn = positives_gt<0
+            self.pr_dict['cls_fn_num'][i] += preds_fn.float().sum()
+
+        recall = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fn_num']) * 100
+        precision = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fp_num']) * 100
+        return recall, precision
 
     def get_cls_layer_loss(self, teacher_result=None):
         cls_preds = self.forward_ret_dict['cls_preds']

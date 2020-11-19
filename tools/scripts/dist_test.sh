@@ -27,7 +27,7 @@ PY_ARGS=${@:2}
 CFG_DIR=../output/kitti_models/second/SoftmaxFocalClassificationLoss1
 CFG_FILE=second.yaml
 EPOCH=80
-TAG=SoftmaxFocalClassificationLoss1
+TAG=pr_eval
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=2 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
