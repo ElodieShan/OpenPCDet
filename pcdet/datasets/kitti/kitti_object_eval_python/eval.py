@@ -489,7 +489,7 @@ def eval_class(gt_annos,
         [num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
     recall = np.zeros(
         [num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
-    if num_minoverlap == 3 and metric==2: # elodie cls 
+    if num_minoverlap >2 and metric==2: # elodie cls 
         precision_min_thresh = np.zeros(
             [num_class, num_difficulty, num_minoverlap])
         recall_min_thresh = np.zeros(
@@ -554,7 +554,7 @@ def eval_class(gt_annos,
                         min_overlap=min_overlap,
                         thresholds=thresholds,
                         compute_aos=compute_aos)
-                    if num_minoverlap == 3:
+                    if num_minoverlap >2:
                         fused_compute_statistics(
                             parted_overlaps[j],
                             pr_min_thresh,
@@ -576,7 +576,7 @@ def eval_class(gt_annos,
                     precision[m, l, k, i] = pr[i, 0] / (pr[i, 0] + pr[i, 1])
                     if compute_aos:
                         aos[m, l, k, i] = pr[i, 3] / (pr[i, 0] + pr[i, 1])
-                if num_minoverlap == 3 and metric==2: # elodie
+                if num_minoverlap >2 and metric==2: # elodie metric==2 means 3d result
                     # print("pr_min_thresh:",pr_min_thresh)
                     recall_min_thresh[m, l, k] = pr_min_thresh[0,0] / (pr_min_thresh[0,0] + pr_min_thresh[0,2])
                     precision_min_thresh[m, l, k] = pr_min_thresh[0,0] / (pr_min_thresh[0,0] + pr_min_thresh[0,1])
@@ -598,7 +598,7 @@ def eval_class(gt_annos,
     # print("-----------------")
     # print("precision:\n",precision)
     cls_ret_dict = None
-    if num_minoverlap == 3 and metric==2: # elodie cls 
+    if num_minoverlap >2 and metric==2: # elodie cls 
         cls_ret_dict = {
             "recall_min_thresh": np.round(recall_min_thresh,4),
             "precision_min_thresh": np.round(precision_min_thresh,4),
@@ -706,10 +706,16 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
                             [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
                             [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
     if compute_cls_ap:
-        overlap_0_0 = np.array([[0.0, 0.0, 0.0, 0.0,
-                                0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        overlap_0_0 = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
+                                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                 [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
-        min_overlaps = np.stack([overlap_0_7, overlap_0_5, overlap_0_0], axis=0) 
+        overlap_0_2 = np.array([[0.2, 0.1, 0.1, 0.2, 0.1, 0.1], 
+                                [0.2, 0.1, 0.1, 0.2, 0.1, 0.1],
+                                [0.2, 0.1, 0.1, 0.2, 0.1, 0.1]])
+        overlap_0_4 = np.array([[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], 
+                                [0.4, 0.4, 0.4, 0.4, 0.4, 0.4],
+                                [0.4, 0.4, 0.4, 0.4, 0.4, 0.4]])
+        min_overlaps = np.stack([overlap_0_7, overlap_0_5, overlap_0_4, overlap_0_2, overlap_0_0], axis=0) 
     else:
         min_overlaps = np.stack([overlap_0_7, overlap_0_5], axis=0) # [2, 3, 5]
     class_to_name = {
@@ -746,7 +752,8 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
     for j, curcls in enumerate(current_classes):
         # mAP threshold array: [num_minoverlap, metric, class]
         # mAP result: [num_class, num_diff, num_minoverlap]
-        for i in range(min_overlaps.shape[0]):
+        # for i in range(min_overlaps.shape[0]):
+        for i in range(2): # elodie - just print  overlap_0_7 & overlap_0_5
             result += print_str(
                 (f"{class_to_name[curcls]} "
                  "AP@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
@@ -810,7 +817,7 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
                 ret_dict['%s_image/easy_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 0, 0]
                 ret_dict['%s_image/moderate_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 1, 0]
                 ret_dict['%s_image/hard_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 2, 0]
-    # print("cls_ret_dict:",cls_ret_dict)
+
     if cls_ret_dict is not None:
         ret_dict['min_thresh_ret'] = cls_ret_dict
     return result, ret_dict

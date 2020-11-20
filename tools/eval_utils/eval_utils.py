@@ -79,11 +79,11 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     sec_per_example = (time.time() - start_time) / len(dataloader.dataset)
     logger.info('Generate label finished(sec_per_example: %.4f second).' % sec_per_example)
     # cls recall & precision
-    logger.info("==================== Anchor Cls Result =================")
+    logger.info("\n==================== Anchor Cls Result =================")
     logger.info("              Car     Pedestrian      Cyclist")
     logger.info("recall:   %.2f    %.2f        %.2f"%(ret_dict['cls_recall'][0], ret_dict['cls_recall'][1], ret_dict['cls_recall'][2]))
-    logger.info("precison: %.2f    %.2f        %.2f \n"%(ret_dict['cls_precision'][0], ret_dict['cls_precision'][1], ret_dict['cls_precision'][2]))
-    logger.info("=======================================================")
+    logger.info("precison: %.2f    %.2f        %.2f "%(ret_dict['cls_precision'][0], ret_dict['cls_precision'][1], ret_dict['cls_precision'][2]))
+    logger.info("=======================================================\n")
 
     if cfg.LOCAL_RANK != 0:
         return {}
@@ -107,7 +107,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     total_pred_objects = 0
     for anno in det_annos:
         total_pred_objects += anno['name'].__len__()
-    logger.info('Average predicted number of objects(%d samples): %.3f'
+    logger.info('Average predicted number of objects(%d samples): %.3f \n'
                 % (len(det_annos), total_pred_objects / max(1, len(det_annos))))
 
     with open(result_dir / 'result.pkl', 'wb') as f:
@@ -127,23 +127,51 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     if 'min_thresh_ret' in result_dict:
         cls_recall = result_dict['min_thresh_ret']['recall_min_thresh']*100
         cls_precision = result_dict['min_thresh_ret']['precision_min_thresh']*100
-        logger.info("------------------")
-        overlap = np.array([[0.0,0.0,0.0],[0.5,0.25,0.25],[0.7,0.5,0.5]])
+        logger.info("==================== Precision & Recall Result =================")
+        overlap = np.array([[0.7,0.5,0.5],
+                            [0.5,0.25,0.25],
+                            [0.4,0.4,0.4],
+                            [0.2,0.1,0.1],
+                            [0.0,0.0,0.0]])
+        idx = np.array([[4,3,2,1,0],
+                        [4,3,1,2,0],
+                        [4,3,1,2,0]])
         for m, current_class in enumerate(cfg.CLASS_NAMES):
             logger.info(current_class)
             logger.info("              Easy     Mod      Hard")
-            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[0,m], cls_recall[m,0,2], cls_recall[m,1,2], cls_recall[m,2,2]))
-            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[0,m],cls_precision[m,0,2], cls_precision[m,1,2], cls_precision[m,2,2]))
-            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[1,m],cls_recall[m,0,1], cls_recall[m,1,1], cls_recall[m,2,1]))
-            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[1,m],cls_precision[m,0,1], cls_precision[m,1,1], cls_precision[m,2,1]))
-            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[2,m],cls_recall[m,0,0], cls_recall[m,1,0], cls_recall[m,2,0]))
-            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[2,m],cls_precision[m,0,0], cls_precision[m,1,0], cls_precision[m,2,0]))
-        logger.info("------------------")
+            for i in idx[m]:
+                logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,m], cls_recall[m,0,i], cls_recall[m,1,i], cls_recall[m,2,i]))
+                logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,m],cls_precision[m,0,i], cls_precision[m,1,i], cls_precision[m,2,i]))
+        logger.info("===============================================================\n")
         result_dict.pop('min_thresh_ret')
     logger.info(result_str)
     ret_dict.update(result_dict)
 
     logger.info('Result is save to %s' % result_dir)
+
+    # ignore_class
+    _, result_dict_ignore_class = dataset.evaluation(
+        det_annos, class_names,
+        eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
+        output_path=final_output_dir,
+        ignore_classes=True
+    )
+    if 'min_thresh_ret' in result_dict_ignore_class:
+        cls_recall = result_dict_ignore_class['min_thresh_ret']['recall_min_thresh']*100
+        cls_precision = result_dict_ignore_class['min_thresh_ret']['precision_min_thresh']*100
+        logger.info("\n==================== Ignore Class - Precision & Recall Result =================")
+        overlap = np.array([[0.7,0.5,0.5],
+                            [0.5,0.25,0.25],
+                            [0.4,0.4,0.4],
+                            [0.2,0.1,0.1],
+                            [0.0,0.0,0.0]])
+        idx = np.array([4,3,2,1,0])
+        logger.info("              Easy     Mod      Hard")
+        for i in idx:
+            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,0], cls_recall[0,0,i], cls_recall[0,1,i], cls_recall[0,2,i]))
+            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,0],cls_precision[0,0,i], cls_precision[0,1,i], cls_precision[0,2,i]))
+        logger.info("===============================================================\n")
+
     logger.info('****************Evaluation done.*****************')
     return ret_dict
 

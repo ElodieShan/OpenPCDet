@@ -248,6 +248,7 @@ class AnchorHeadTemplate(nn.Module):
         
         # Student False Positive:  True Positive >0, False Positive <0 elodie
         cls_preds_student_sigmoid = torch.softmax(cls_preds,dim=-1)
+        cls_preds_student_sigmoid = cls_preds_student_sigmoid[...,1:]
         cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_sigmoid>self.cls_score_thred,\
                              torch.full_like(cls_preds_student_sigmoid,1), torch.full_like(cls_preds_student_sigmoid,0))
         cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
