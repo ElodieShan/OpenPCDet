@@ -169,7 +169,7 @@ class SoftmaxFocalClassificationLoss2(nn.Module):
         loss = focal_weight * bce_loss
 
         assert weights.shape.__len__() == loss.shape.__len__()
-        print("loss:",(loss * weights).sum()/2)
+        # print("loss:",(loss * weights).sum()/2)
         return loss * weights
 
 
@@ -472,15 +472,16 @@ class HintKLDivergenceLoss(nn.Module):
         return loss
 
 class WeightedKLDivergenceLoss(nn.Module):
-    def __init__(self, weighted=True):
+    def __init__(self, T=1.0, weighted=True):
         super(WeightedKLDivergenceLoss, self).__init__()
+        self.T = T
         self.weighted = weighted
     
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        input = F.log_softmax(input, dim=-1)
-        target = F.softmax(target, dim=-1)
+        input = F.log_softmax(input/self.T, dim=-1)
+        target = F.softmax(target/self.T, dim=-1)
 
-        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) 
+        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) * self.T * self.T 
         if self.weighted:
             klloss = klloss* weights
         else:
