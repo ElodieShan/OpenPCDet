@@ -207,8 +207,8 @@ class AnchorHeadTemplate(nn.Module):
             preds_fn = positives_gt<0
             self.pr_dict['cls_fn_num'][i] += preds_fn.float().sum()
 
-        recall = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fn_num'])
-        precision = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fp_num'])
+        recall = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fn_num']) * 100
+        precision = self.pr_dict['cls_tp_num']/(self.pr_dict['cls_tp_num']+self.pr_dict['cls_fp_num']) * 100
         return recall, precision
 
     def get_cls_layer_loss(self, teacher_result=None):

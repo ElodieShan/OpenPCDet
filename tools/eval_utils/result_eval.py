@@ -15,6 +15,9 @@ from pcdet.datasets.multiple.multiple_dataset import MultipleDataset
 from pcdet.datasets import build_dataloader
 from pcdet.utils.box_utils import boxes_to_corners_3d
 
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import MultipleLocator
 __all__ = {
     'DatasetTemplate': DatasetTemplate,
     'KittiDataset': KittiDataset,
@@ -39,17 +42,48 @@ def get_logger(log_level=logging.INFO, log_path=None):
     logger.addHandler(console)
     return logger
 
-def load_dataset_from_openpcdet(config_path, train_mode=True):
+def load_dataset_from_openpcdet(config_path, train_mode=True, logger=None):
     from pcdet.config import cfg, cfg_from_yaml_file
     cfg = cfg_from_yaml_file(config_path, cfg)
-    logger = get_logger(log_level=logging.INFO)
+    if logger is None:
+        logger = get_logger(log_level=logging.INFO)
     dataset = __all__[cfg.DATA_CONFIG.DATASET](
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
         training=train_mode,
         logger=logger,
     )
-    return dataset, dataset.dataset_cfg.DATASET, cfg
+    return dataset, dataset.dataset_cfg.DATASET, cfg, logger
+
+def plot_recall_iou(recall, precision, overlaps, out_pic_fig_path):
+    pic_list = ['Easy', 'Mod', 'Hard']
+    color = ['b','g','y','r']
+    class_name = recall.keys()
+    fig,axes = plt.subplots(nrows=2, ncols=len(pic_list), figsize=(16,9)) # row1: recall / row2:precision
+    for i in range(len(pic_list)):
+        for j, name in enumerate(class_name):
+            print(j, name)
+            print(recall[name][i])
+            print(precision[name][i])
+            if j == 3:
+                overlap = np.sort(overlaps[:,0])
+            else:
+                overlap = np.sort(overlaps[:,j])
+            axes[0][i].plot(overlap, recall[name][i], color=color[j], label=name)
+            axes[1][i].plot(overlap, precision[name][i], color=color[j], label=name)
+        axes[0][i].set_xticks(np.linspace(0,0.8,9))
+        axes[0][i].set_yticks(np.linspace(50,100,6))
+        title1 = 'Recall - ' + str(pic_list[i])
+        axes[0][i].set_title(title1)
+        axes[0][i].legend()
+        axes[1][i].set_xticks(np.linspace(0,0.8,9))
+        axes[1][i].set_yticks(np.linspace(0,60,7))
+        title2 = 'Precision - ' + str(pic_list[i])
+        axes[1][i].set_title(title2)
+        axes[1][i].legend()
+    # plt.show()
+    fig.savefig(out_pic_fig_path)
+    plt.clf() 
 
 if __name__ == '__main__':
     import sys
@@ -60,35 +94,90 @@ if __name__ == '__main__':
         config_file = sys.argv[1]
         result_pkl_file = sys.argv[2]
         eval_type = sys.argv[3]
-        print("config_file:",config_file)
-        print("result_pkl_file:",result_pkl_file)
-        print("eval_type:",eval_type)
 
-        dataset, dataset_type, cfg = load_dataset_from_openpcdet(config_file, train_mode=False)
+        dataset, dataset_type, cfg, logger = load_dataset_from_openpcdet(config_file, train_mode=False)
         with open(result_pkl_file, 'rb') as f:
             det_annos = pickle.load(f)
-        
+        classes =['car','pedestrian','cyclist']
         if eval_type == "evaluation":
             result_str, result_dict = dataset.evaluation(
                 det_annos, dataset.class_names,
                 eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC
             )
+
+            logger.info("config_file: %s"%config_file)
+            logger.info("result_pkl_file: %s"%result_pkl_file)
+            logger.info("eval_type: %s"%eval_type)
+
+            cls_precision_ = {
+                'car': [],
+                'pedestrian': [],
+                'cyclist': [],
+                'ignore_class': []
+            }
+            cls_recall_ = {
+                'car': [],
+                'pedestrian': [],
+                'cyclist': [],
+                'ignore_class': []
+            }
+
             if 'min_thresh_ret' in result_dict:
                 cls_recall = result_dict['min_thresh_ret']['recall_min_thresh']*100
                 cls_precision = result_dict['min_thresh_ret']['precision_min_thresh']*100
-                overlap = np.array([[0.0,0.0,0.0],[0.5,0.25,0.25],[0.7,0.5,0.5]])
+                logger.info("\n==================== Precision & Recall Result =================")
+                overlap = np.array([[0.7,0.5,0.5],
+                                    [0.5,0.25,0.25],
+                                    [0.4,0.4,0.4],
+                                    [0.2,0.1,0.1],
+                                    [0.0,0.0,0.0]])
+                idx = np.array([[4,3,2,1,0],
+                                [4,3,1,2,0],
+                                [4,3,1,2,0]])
                 for m, current_class in enumerate(cfg.CLASS_NAMES):
-                    print(current_class)
-                    print("              Easy     Mod      Hard")
-                    print("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[0,m], cls_recall[m,0,2], cls_recall[m,1,2], cls_recall[m,2,2]))
-                    print("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[0,m],cls_precision[m,0,2], cls_precision[m,1,2], cls_precision[m,2,2]))
-                    print("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[1,m],cls_recall[m,0,1], cls_recall[m,1,1], cls_recall[m,2,1]))
-                    print("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[1,m],cls_precision[m,0,1], cls_precision[m,1,1], cls_precision[m,2,1]))
-                    print("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[2,m],cls_recall[m,0,0], cls_recall[m,1,0], cls_recall[m,2,0]))
-                    print("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[2,m],cls_precision[m,0,0], cls_precision[m,1,0], cls_precision[m,2,0]))
-            print('-------------\n')
+                    logger.info(current_class)
+                    logger.info("              Easy     Mod      Hard")
+                    for i in idx[m]:
+                        logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,m], cls_recall[m,0,i], cls_recall[m,1,i], cls_recall[m,2,i]))
+                        logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,m],cls_precision[m,0,i], cls_precision[m,1,i], cls_precision[m,2,i]))
+                    for j in range(len(classes)):
+                        cls_precision_[classes[m]].append(cls_precision[m,j][idx[m]])
+                        cls_recall_[classes[m]].append(cls_recall[m,j][idx[m]])
+
+                logger.info("===============================================================\n")
+
             print(result_str)
 
+            # elodie - ignore_class
+            _, result_dict_ignore_class = dataset.evaluation(
+                det_annos, dataset.class_names,
+                eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
+                ignore_classes=True
+            )
+            if 'min_thresh_ret' in result_dict_ignore_class:
+                cls_recall = result_dict_ignore_class['min_thresh_ret']['recall_min_thresh']*100
+                cls_precision = result_dict_ignore_class['min_thresh_ret']['precision_min_thresh']*100
+                logger.info("\n==================== Ignore Class - Precision & Recall Result =================")
+                overlap = np.array([[0.7,0.5,0.5],
+                                    [0.5,0.25,0.25],
+                                    [0.4,0.4,0.4],
+                                    [0.2,0.1,0.1],
+                                    [0.0,0.0,0.0]])
+                idx = np.array([4,3,2,1,0])
+                logger.info("              Easy     Mod      Hard")
+                for i in idx:
+                    logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,0], cls_recall[0,0,i], cls_recall[0,1,i], cls_recall[0,2,i]))
+                    logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,0],cls_precision[0,0,i], cls_precision[0,1,i], cls_precision[0,2,i]))
+                for j in range(3):
+                    cls_precision_['ignore_class'].append(cls_precision[0,j][idx])
+                    cls_recall_['ignore_class'].append(cls_recall[0,j][idx])
+                logger.info("===============================================================\n")
+
+            out_pic_fig = config_file.replace('.yaml','_pr.png')
+            plot_recall_iou(cls_recall_, cls_precision_, overlap, out_pic_fig)              
+            logger.info('pr picture save to %s'%out_pic_fig)
+
+            logger.info('****************Evaluation done.*****************')
 
         if eval_type == "iou":
             det_w_iou = dataset.get_detobject_iou(det_annos)
