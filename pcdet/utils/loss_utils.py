@@ -169,6 +169,7 @@ class SoftmaxFocalClassificationLoss2(nn.Module):
         loss = focal_weight * bce_loss
 
         assert weights.shape.__len__() == loss.shape.__len__()
+        print("loss:",(loss * weights).sum()/2)
         return loss * weights
 
 
