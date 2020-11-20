@@ -24,12 +24,25 @@ __all__ = {
     'NuScenesDataset': NuScenesDataset,
     'MultipleDataset': MultipleDataset
 }
-def get_logger(log_level=logging.INFO, log_path=None):
+
+def init_data_dir(path):
+    import os
+    file_root_path, file_name=os.path.split(path)
+    if not os.path.exists(file_root_path):
+        try:
+            os.makedirs(file_root_path)
+        except:
+            print("Error occurs when make dirs %s"%file_root_path)
+
+def get_logger(log_level=logging.INFO, log_dir=None):
     logger = logging.getLogger(__name__)
     logger.setLevel(level = logging.INFO)
-    if log_path is None:
-        import datetime
-        log_path = ("/home/elodie/det3d_ros/src/det3d_pcl/log/%s" % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    import datetime
+    if log_dir is None:
+        log_path = ("/home/elodie/det3d_ros/src/det3d_pcl/log/%s.log" % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    else:
+        log_path = ("%s/%s.log" % (log_dir, datetime.datetime.now().strftime('%Y%m%d-%H%M%S')))
+        init_data_dir(log_path)
     handler = logging.FileHandler(log_path)
     handler.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,11 +55,12 @@ def get_logger(log_level=logging.INFO, log_path=None):
     logger.addHandler(console)
     return logger
 
-def load_dataset_from_openpcdet(config_path, train_mode=True, logger=None):
+def load_dataset_from_openpcdet(config_path, train_mode=True, logger=None, log_dir=None):
     from pcdet.config import cfg, cfg_from_yaml_file
     cfg = cfg_from_yaml_file(config_path, cfg)
+
     if logger is None:
-        logger = get_logger(log_level=logging.INFO)
+        logger = get_logger(log_level=logging.INFO, log_dir=log_dir)
     dataset = __all__[cfg.DATA_CONFIG.DATASET](
         dataset_cfg=cfg.DATA_CONFIG,
         class_names=cfg.CLASS_NAMES,
@@ -91,11 +105,12 @@ if __name__ == '__main__':
         import yaml
         from tqdm import tqdm
         from easydict import EasyDict
-        config_file = sys.argv[1]
-        result_pkl_file = sys.argv[2]
-        eval_type = sys.argv[3]
-
-        dataset, dataset_type, cfg, logger = load_dataset_from_openpcdet(config_file, train_mode=False)
+        config_dir = sys.argv[1]
+        config_file = sys.argv[2]
+        result_pkl_file = sys.argv[3]
+        eval_type = sys.argv[4]
+        log_dir = config_dir + "/result_eval"
+        dataset, dataset_type, cfg, logger = load_dataset_from_openpcdet(config_file, train_mode=False, log_dir=log_dir)
         with open(result_pkl_file, 'rb') as f:
             det_annos = pickle.load(f)
         classes =['car','pedestrian','cyclist']
@@ -173,7 +188,7 @@ if __name__ == '__main__':
                     cls_recall_['ignore_class'].append(cls_recall[0,j][idx])
                 logger.info("===============================================================\n")
 
-            out_pic_fig = config_file.replace('.yaml','_pr.png')
+            out_pic_fig = config_dir + "/result_eval/pr.png"
             plot_recall_iou(cls_recall_, cls_precision_, overlap, out_pic_fig)              
             logger.info('pr picture save to %s'%out_pic_fig)
 

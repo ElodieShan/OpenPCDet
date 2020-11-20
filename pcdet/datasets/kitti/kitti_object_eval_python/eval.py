@@ -503,6 +503,7 @@ def eval_class(gt_annos,
             (gt_datas_list, dt_datas_list, ignored_gts, ignored_dets,
              dontcares, total_dc_num, total_num_valid_gt) = rets
             for k, min_overlap in enumerate(min_overlaps[:, metric, m]):
+                total_gt_num_all = 0
                 thresholdss = []
                 for i in range(len(gt_annos)):
                     rets = compute_statistics_jit(
@@ -571,17 +572,23 @@ def eval_class(gt_annos,
                             thresholds=[0.0],
                             compute_aos=compute_aos)
                     idx += num_part
+                    total_gt_num_all += sum(total_gt_num[idx:idx + num_part])
                 for i in range(len(thresholds)):
                     recall[m, l, k, i] = pr[i, 0] / (pr[i, 0] + pr[i, 2])
                     precision[m, l, k, i] = pr[i, 0] / (pr[i, 0] + pr[i, 1])
                     if compute_aos:
                         aos[m, l, k, i] = pr[i, 3] / (pr[i, 0] + pr[i, 1])
                 if num_minoverlap >2 and metric==2: # elodie metric==2 means 3d result
-                    # print("pr_min_thresh:",pr_min_thresh)
+                    # elodie pr: 0 -- tp, 1--fp, 2--fn
                     recall_min_thresh[m, l, k] = pr_min_thresh[0,0] / (pr_min_thresh[0,0] + pr_min_thresh[0,2])
                     precision_min_thresh[m, l, k] = pr_min_thresh[0,0] / (pr_min_thresh[0,0] + pr_min_thresh[0,1])
-                    # print("m:",m,"l:",l,'-',difficulty,'k:',k,'-',min_overlap)
-                    # print("pr_min_thresh:")
+                    # print("class:",m,"l:",l,'-',difficulty,'k:',k,'-',min_overlap)
+                    # print("tp:",pr_min_thresh[0,0] )
+                    # print("fp:",pr_min_thresh[0,1] )
+                    # print("fn:",pr_min_thresh[0,2] )
+                    # print("gt num:",(pr_min_thresh[0,0] + pr_min_thresh[0,2]) )
+                    # print('total_gt_num_all:',total_gt_num_all)
+                    # print("split_parts:",split_parts)
                     # print("tp",pr_min_thresh[0,0],"   fp:",pr_min_thresh[0,1],"    fn:",pr_min_thresh[0,2])
                     # print("recall_min_thresh[m, l, k]:",recall_min_thresh[m, l, k])
                 for i in range(len(thresholds)):

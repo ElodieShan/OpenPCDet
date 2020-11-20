@@ -24,13 +24,14 @@ PY_ARGS=${@:2}
 # EPOCH=40
 # TAG=pretrained_mse2_ttp0_2_sfp5_reg_a3m1e_5_hintl2_0_3_ttp1_sfp0_5
 
-CFG_DIR=../output/kitti_models/second/use_plane_batch2_lr0.0015
-CFG_FILE=second2.yaml
-EPOCH=80
+CFG_DIR=../output/kitti_models/second_mimic_MSE2_BoundedReg3/pretrained_mse_ttp0_2_sfp5_breg_a3_m00001
+CFG_FILE=second_mimic_MSE2_BoundedReg3_2.yaml
+EPOCH=40
 TAG=pr_eval
 
 CUDA_VISIBLE_DEVICES=0 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
+--output_dir $CFG_DIR \
 --batch_size 2 \
 --eval_tag $TAG \
 --tcp_port 18881 \

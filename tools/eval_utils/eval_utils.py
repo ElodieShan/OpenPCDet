@@ -128,11 +128,11 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         cls_recall = result_dict['min_thresh_ret']['recall_min_thresh']*100
         cls_precision = result_dict['min_thresh_ret']['precision_min_thresh']*100
         logger.info("==================== Precision & Recall Result =================")
-        overlap = np.array([[0.0,0.0,0.0],
-                            [0.2,0.1,0.1],
-                            [0.4,0.4,0.4],
+        overlap = np.array([[0.7,0.5,0.5],
                             [0.5,0.25,0.25],
-                            [0.7,0.5,0.5]])
+                            [0.4,0.4,0.4],
+                            [0.2,0.1,0.1],
+                            [0.0,0.0,0.0]])
         idx = np.array([[4,3,2,1,0],
                         [4,3,1,2,0],
                         [4,3,1,2,0]])
@@ -160,11 +160,11 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         cls_recall = result_dict_ignore_class['min_thresh_ret']['recall_min_thresh']*100
         cls_precision = result_dict_ignore_class['min_thresh_ret']['precision_min_thresh']*100
         logger.info("\n==================== Ignore Class - Precision & Recall Result =================")
-        overlap = np.array([[0.0,0.0,0.0],
-                            [0.2,0.1,0.1],
-                            [0.4,0.4,0.4],
+        overlap = np.array([[0.7,0.5,0.5],
                             [0.5,0.25,0.25],
-                            [0.7,0.5,0.5]])
+                            [0.4,0.4,0.4],
+                            [0.2,0.1,0.1],
+                            [0.0,0.0,0.0]])
         idx = np.array([4,3,2,1,0])
         logger.info("              Easy     Mod      Hard")
         for i in idx:

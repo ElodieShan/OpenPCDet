@@ -362,8 +362,9 @@ class HintKLDivergenceLoss(nn.Module):
         return loss
 
 class WeightedKLDivergenceLoss(nn.Module):
-    def __init__(self, weighted=True):
+    def __init__(self, T=1.0, weighted=True):
         super(WeightedKLDivergenceLoss, self).__init__()
+        self.T = T
         self.weighted = weighted
     
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
