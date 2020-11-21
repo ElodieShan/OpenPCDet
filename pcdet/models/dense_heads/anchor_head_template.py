@@ -94,7 +94,7 @@ class AnchorHeadTemplate(nn.Module):
             'cls_loss_func',
             # loss_utils.FocalLoss(gamma=2.0)
 
-            loss_utils.SoftmaxFocalClassificationLoss2(alpha=0.75, gamma=2.0)
+            loss_utils.SoftmaxFocalClassificationLoss1(alpha=0.75, gamma=2.0)
             # loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
         )
         reg_loss_name = 'WeightedSmoothL1Loss' if losses_cfg.get('REG_LOSS_TYPE', None) is None \
