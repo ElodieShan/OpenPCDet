@@ -486,6 +486,7 @@ class WeightedKLDivergenceLoss(nn.Module):
             klloss = klloss* weights
         else:
             klloss = klloss.mean(dim=-1)
+        print("klloss:",klloss.sum()/2)
         return klloss
 
 class BoundedRegressionLoss(nn.Module):

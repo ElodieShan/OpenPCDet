@@ -243,14 +243,15 @@ class AnchorHeadTemplate(nn.Module):
             *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
         )
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
-        cls_preds = cls_preds.view(batch_size, -1, (self.num_class+1))
+        cls_preds = cls_preds.view(batch_size, -1, (self.num_class+1)) # elodie softmax
         # one_hot_targets = one_hot_targets[..., 1:] # elodie softmax
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
         
         # Student False Positive:  True Positive >0, False Positive <0 elodie
-        cls_preds_student_softmax = torch.softmax(cls_preds,dim=-1)
-        cls_preds_student_softmax = cls_preds_student_softmax[...,1:]
+        cls_preds_student_softmax_src = torch.softmax(cls_preds,dim=-1)
+        # cls_preds_student_maxarg = cls_preds_student_softmax.argmax(dim=-1)
+        cls_preds_student_softmax = cls_preds_student_softmax_src[...,1:]
         cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_softmax>self.cls_score_thred,\
                              torch.full_like(cls_preds_student_softmax,1), torch.full_like(cls_preds_student_softmax,0))
         cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
@@ -275,8 +276,10 @@ class AnchorHeadTemplate(nn.Module):
             
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, (self.num_class+1))
-            cls_preds_teacher_softmax = torch.softmax(cls_preds_teacher,dim=-1)
-            cls_preds_teacher_softmax = cls_preds_teacher_softmax[...,1:]
+            cls_preds_teacher_softmax_src = torch.softmax(cls_preds_teacher,dim=-1)
+            # cls_preds_teacher_maxarg = cls_preds_teacher_softmax.argmax(dim=-1)
+
+            cls_preds_teacher_softmax = cls_preds_teacher_softmax_src[...,1:]
             cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_softmax>self.cls_score_thred,\
                              torch.full_like(cls_preds_teacher_softmax,1), torch.full_like(cls_preds_teacher_softmax,0))
             cls_preds_teacher_max = cls_preds_teacher_softmax.max(dim=-1)
@@ -382,28 +385,30 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
+                if self.cls_soft_loss_type == 'WeightedKLDivergenceLoss':
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
 
-                cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_softmax, cls_preds_teacher_softmax, weights=weights)
+                else:
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_softmax_src, cls_preds_teacher_softmax_src, weights=weights)
             
             # print("\n\n---------------------start------------:\n")
             # print("\n\npositives:",positives.sum(1, keepdim=True).float())
             # print("\nnegatives:",negatives.sum(1, keepdim=True).float(),"\n")
             # print("\n\npositives_teacher:",positives_teacher_preds_num)
             # print("\nnegatives_teacher:",negatives_teacher_preds.sum(1, keepdim=True).float(),"\n")
-            # cls_preds_sigmoid = torch.sigmoid(cls_preds)
+            # # cls_preds_sigmoid = torch.sigmoid(cls_preds)
 
-            # cls_preds_student_maxarg2 = torch.where(cls_targets==3, torch.full_like(cls_targets,1), torch.full_like(cls_targets,0))
-            # cls_preds_student_maxarg2 = torch.where(cls_preds_student_maxarg==2, cls_preds_student_maxarg2, torch.full_like(cls_targets,0))
-            # cls_preds_student_maxarg2_num = cls_preds_student_maxarg2.float().sum(-1, keepdim=True)
-            # if cls_preds_student_maxarg2_num.sum()>0:
-            #     print("cls_preds_student_maxarg2_num:",cls_preds_student_maxarg2_num)
+            # # cls_preds_student_maxarg2 = torch.where(cls_targets==3, torch.full_like(cls_targets,1), torch.full_like(cls_targets,0))
+            # # cls_preds_student_maxarg2 = torch.where(cls_preds_student_maxarg==2, cls_preds_student_maxarg2, torch.full_like(cls_targets,0))
+            # # cls_preds_student_maxarg2_num = cls_preds_student_maxarg2.float().sum(-1, keepdim=True)
+            # # if cls_preds_student_maxarg2_num.sum()>0:
+            # #     print("cls_preds_student_maxarg2_num:",cls_preds_student_maxarg2_num)
             # for i in range(cls_targets.shape[-1]):
             # # for i in range(10):
-            #   if cls_preds_student_maxarg[0,i]==2 and cls_targets[0,i] ==3:
             #     print(i, "- cls_targets:\t", cls_targets[0,i])
             #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
             #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
-            #     print(i, "- cls_preds_student_softmax:\t", cls_preds_sigmoid[0,i])
+            #     print(i, "- cls_preds_student_softmax:\t", cls_preds_student_softmax[0,i])
             #     print(i, "- cls_preds_student_maxarg:\t", cls_preds_student_maxarg[0,i])
             #     print(i, "- cls_preds_student result:\t", cls_preds_student_ret[0,i],"\n")
             #     print(i, "- cls_preds_teacher:\t", cls_preds_teacher[0,i])
