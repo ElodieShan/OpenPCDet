@@ -362,6 +362,46 @@ class SigmoidKLDivergenceLoss(nn.Module):
             klloss = klloss.mean(dim=-1)
         return klloss
 
+class SoftmaxKLDivergenceLoss(nn.Module):
+    def __init__(self, T=1.0, weighted=True):
+        super(SoftmaxKLDivergenceLoss, self).__init__()
+        self.T = T
+        self.weighted = weighted
+
+    @staticmethod
+    def softmax_klloss_with_logits(input: torch.Tensor, target: torch.Tensor):
+        """ 
+        KL Loss = P(x)*log(P(x)/Q(x)) =P(x)*(log(P(x))-log(Q(x))
+        ------------------------------>P(x)*|log(P(x))-log(Q(x)|
+
+        Args:
+            input: (B, #anchors, #classes) float tensor.
+                Predicted logits for each class
+            target: (B, #anchors, #classes) float tensor.
+                One-hot encoded classification targets
+
+        Returns:
+            loss: (B, #anchors, #classes) float tensor.
+                Sigmoid cross entropy loss without reduction
+        """
+        input_logsoftmax = F.log_softmax(input, dim=-1)
+        target_softmax = F.softmax(target, dim=-1)
+        target_logsoftmax = F.log_softmax(target, dim=-1)
+
+        loss = target_softmax * torch.abs(target_logsoftmax-input_logsoftmax)
+
+        return loss
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        klloss = self.softmax_klloss_with_logits(input/self.T,target/self.T) * self.T * self.T 
+
+        if self.weighted:
+            klloss = (klloss* weights).sum(dim=-1)
+        else:
+            klloss = klloss.mean(dim=-1)
+        print("klloss:",klloss.sum()/2)
+        return klloss
+
 class BoundedRegressionLoss(nn.Module):
 
     def __init__(self, margin: float = 0.001):

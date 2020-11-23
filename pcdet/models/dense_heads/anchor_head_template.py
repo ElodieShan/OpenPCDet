@@ -122,17 +122,16 @@ class AnchorHeadTemplate(nn.Module):
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
                     )
-            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss']:
+            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                 weighted = soft_losses_cfg.CLS_LOSS.get('WEIGHTED', True)
                 self.mimic_cls_classes_use_only = soft_losses_cfg.CLS_LOSS.get('CLASS_USE_ONLY', False)
                 if self.mimic_cls_classes_use_only: # elodie
                     class_index = []
-                    num_orient = self.num_anchors_per_location / self.num_class
+                    num_orient = sum(self.num_anchors_per_location) // self.num_class
                     for i in range(self.num_class):
                         for j in range(num_orient):
                             class_index.append((i*2+j)*self.num_class +i)
-                    class_index = np.array(class_index)
-                    print("class_index:",class_index)
+                    self.class_index = np.array(class_index)
                 self.add_module(
                     'soft_cls_loss_func',
                      getattr(loss_utils, self.cls_soft_loss_type)(weighted=weighted, T=mimic_cls_temperature)
@@ -247,6 +246,11 @@ class AnchorHeadTemplate(nn.Module):
             *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
         )
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
+
+        if self.mimic_cls_classes_use_only: # elodie
+            cls_preds_per_location = cls_preds[..., self.class_index]
+            cls_preds_per_location = cls_preds_per_location.view(batch_size, -1, self.class_index.shape[0])
+
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
         one_hot_targets = one_hot_targets[..., 1:]
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
@@ -279,6 +283,9 @@ class AnchorHeadTemplate(nn.Module):
             self.soft_loss_weights['weights_gt'] = reg_weights
             
             cls_preds_teacher = teacher_result['cls_preds']
+            if self.mimic_cls_classes_use_only: # elodie
+                cls_preds_teacher_per_location = cls_preds_teacher[..., self.class_index]
+                cls_preds_teacher_per_location = cls_preds_teacher_per_location.view(batch_size, -1, self.class_index.shape[0])
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
             cls_preds_teacher_sigmoid = torch.sigmoid(cls_preds_teacher)
             cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_sigmoid>self.cls_score_thred,\
@@ -386,8 +393,69 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
-                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss']:
-                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
+                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
+                    if self.mimic_cls_classes_use_only: # elodie
+                        weights = weights.view(batch_size, -1, self.class_index.shape[0])
+                        cls_soft_loss = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights)
+
+                        # ----------------For Test Print
+                        # weights2 = weights.view(batch_size, -1, self.class_index.shape[0])
+                        # cls_soft_loss1 = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights2)
+                        # cls_preds_per_location_sigmoid = torch.sigmoid(cls_preds_per_location)
+                        # cls_preds_teacher_per_location_sigmoid = torch.sigmoid(cls_preds_teacher_per_location)
+                        # cls_preds_per_location_softmax = torch.softmax(cls_preds_per_location,dim=-1)
+                        # cls_preds_teacher_per_location_softmax = torch.softmax(cls_preds_teacher_per_location,dim=-1)
+                        # # cls_soft_loss = cls_soft_loss1.sum(dim=-1) * weights2
+                        # cls_soft_loss = (cls_soft_loss1* weights2).sum(dim=-1) 
+
+                        # cls_preds_sigmoid = torch.sigmoid(cls_preds)
+                        # cls_soft_loss1_sigmoid = self.soft_cls_loss_func_sigmoid(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights2)
+                        # cls_soft_loss_sigmoid = (cls_soft_loss1_sigmoid* weights2).sum(dim=-1) 
+                        # cls_soft_loss1_softmax = self.soft_cls_loss_func_softmax(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights2)
+                        # cls_soft_loss_softmax = (cls_soft_loss1_softmax* weights2).sum(dim=-1) 
+
+                        # for j in range(cls_preds_per_location.shape[1]):
+                        #   print("=====================")
+                        #   print(j, "- cls_preds_per_location:\t", cls_preds_per_location[0,j])
+                        #   print(j, "- cls_preds_teacher_per_location:\t", cls_preds_teacher_per_location[0,j])
+                        #   print(j, "- cls_preds_per_location_sigmoid:\t", cls_preds_per_location_sigmoid[0,j])
+                        #   print(j, "- cls_preds_teacher_per_location_sigmoid:\t", cls_preds_teacher_per_location_sigmoid[0,j])
+                        #   print(j, "- kl loss sigmoid:\t", cls_soft_loss1_sigmoid[0,j])
+                        #   print(j, "- kl loss sigmoid sum:\t", cls_soft_loss_sigmoid[0,j])
+
+                        #   print(j, "- cls_preds_per_location_softmax:\t", cls_preds_per_location_softmax[0,j])
+                        #   print(j, "- cls_preds_teacher_per_location_softmax:\t", cls_preds_teacher_per_location_softmax[0,j])
+                        #   print(j, "- kl loss softmax:\t", cls_soft_loss1[0,j])
+                        #   print(j, "- kl loss softmax2:\t", cls_soft_loss1_softmax[0,j])
+                        #   print(j, "- kl loss softmax sum:\t", cls_soft_loss[0,j])
+
+                        #   print(j, "- weights:\t", weights2[0,j])
+                        #   print(j, "- ",self.cls_soft_loss_type, " loss:\t", cls_soft_loss[0,j],'\n')
+                        #   print("=====================")
+                        #   for n in range(6):
+                        #     i = j*6+n
+                        #     print(i, '- ', n, "- cls_targets:\t", cls_targets[0,i])
+                        #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
+                        #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
+                        #     print(i, "- cls_preds_student_sigmoid:\t", cls_preds_sigmoid[0,i])
+                        #     print(i, "- cls_preds_student_maxarg:\t", cls_preds_student_maxarg[0,i])
+                        #     print(i, "- cls_preds_student result:\t", cls_preds_student_ret[0,i],"\n")
+                        #     print(i, "- cls_preds_teacher:\t", cls_preds_teacher[0,i])
+                        #     print(i, "- cls_preds_teacher_sigmoid:\t", cls_preds_teacher_sigmoid[0,i])
+                        #     print(i, "- cls_preds_teacher_maxarg:\t", cls_preds_teacher_maxarg[0,i])
+                        #     print(i, "- cls_preds_teacher result:\t", cls_preds_teacher_ret[0,i])
+                        #     print(i, "- cls_preds_teacher P include high conf:\t", cls_preds_teacher_whc_ret[0,i],'\n')
+                        #     print(i, "- cls cls loss  :\t", cls_weights[0,i])
+                        #     print(i, "- cls reg loss  :\t", reg_weights[0,i])
+                        #     print(i, "- cls soft loss GroundTruth weights:\t", reg_weights[0,i],'\n')
+                        #     print(i, "- cls soft loss Teacher_TP weights:\t", weights_ttp[0,i])
+                        #     print(i, "- cls soft loss Teacher_High Conf weights:\t", weights_twhc[0,i])
+                        #     print(i, "- cls soft loss Student_FP weights:\t", weights_sfp[0,i],'\n')
+                        #     print(i, "- cls soft loss Student_FN weights:\t", weights_sfn[0,i],'\n')
+                        #     print(i, "- cls soft loss weights:\t", weights[0,i])
+                        #     print("-----------")
+                    else:
+                        cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
                 else:
                     cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_sigmoid, cls_preds_teacher_sigmoid, weights=weights)
             
@@ -405,7 +473,6 @@ class AnchorHeadTemplate(nn.Module):
             #     print("cls_preds_student_maxarg2_num:",cls_preds_student_maxarg2_num)
             # for i in range(cls_targets.shape[-1]):
             # # for i in range(10):
-            #   if cls_preds_student_maxarg[0,i]==2 and cls_targets[0,i] ==3:
             #     print(i, "- cls_targets:\t", cls_targets[0,i])
             #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
             #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
