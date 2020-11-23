@@ -1,5 +1,4 @@
 import numpy as np
-import ros_numpy
 
 """ Function: get_distance_2d
 @breif 单点根据x、y计算2D距离
