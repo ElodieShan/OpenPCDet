@@ -81,61 +81,6 @@ class SigmoidFocalClassificationLoss(nn.Module):
 
         return loss * weights
 
-# class SoftmaxFocalClassificationLoss(nn.Module):
-#     """
-#     Softmax focal cross entropy loss.
-#     """
-
-#     def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
-#         """
-#         Args:
-#             gamma: Weighting parameter to balance loss for hard and easy examples.
-#             alpha: Weighting parameter to balance loss for positive and negative examples.
-#         """
-#         super(SoftmaxFocalClassificationLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
-
-#     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-#         """
-#         Args:
-#             input: (B, #anchors, #classes) float tensor.
-#                 Predicted logits for each class
-#             target: (B, #anchors, #classes) float tensor.
-#                 One-hot encoded classification targets
-#             weights: (B, #anchors) float tensor.
-#                 Anchor-wise weights.
-
-#         Returns:
-#             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
-#         """
-#         pred_softmax = F.softmax(input,dim=-1)
-#         # print("pred_sigmoid:",pred_sigmoid)
-#         # print("target:",target)
-#         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
-#         # pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
-#         # focal_weight = alpha_weight * torch.pow(pt, self.gamma)
-
-#         # bce_loss = self.sigmoid_cross_entropy_with_logits(input, target)
-
-#         # loss = focal_weight * bce_loss
-#         input = input.permute(0, 2, 1)
-#         bce_loss2 = F.cross_entropy(input, target, reduce=False)
-#         pt2 = torch.exp(-bce_loss2)
-#         pt = target * (1.0 - pred_softmax) + (1.0 - target) * pred_softmax
-#         print("pt2:",pt2)
-#         print("pt:",pt)
-#         focal_weight2 = alpha_weight * (1-pt2)**self.gamma
-#         F_loss = focal_weight2 * bce_loss2
-
-#         if weights.shape.__len__() == 2 or \
-#                 (weights.shape.__len__() == 1 and target.shape.__len__() == 2):
-#             weights = weights.unsqueeze(-1)
-
-#         assert weights.shape.__len__() == loss.shape.__len__()
-
-#         return loss * weights
-
 class WeightedSmoothL1Loss(nn.Module):
     """
     Code-wise Weighted Smooth L1 Loss modified based on fvcore.nn.smooth_l1_loss
@@ -368,10 +313,49 @@ class WeightedKLDivergenceLoss(nn.Module):
         self.weighted = weighted
     
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        input = F.log_softmax(input, dim=-1)
-        target = F.softmax(target, dim=-1)
+        input = F.log_softmax(input/self.T, dim=-1)
+        target = F.softmax(target/self.T, dim=-1)
 
-        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) 
+        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) * self.T * self.T 
+        if self.weighted:
+            klloss = klloss* weights
+        else:
+            klloss = klloss.mean(dim=-1)
+        # print("klloss:",klloss.sum()/2)
+        return klloss
+
+class SigmoidKLDivergenceLoss(nn.Module):
+    def __init__(self, T=1.0, weighted=True):
+        super(SigmoidKLDivergenceLoss, self).__init__()
+        self.T = T
+        self.weighted = weighted
+
+    @staticmethod
+    def klloss_with_logits(input: torch.Tensor, target: torch.Tensor):
+        """ 
+        KL Loss = P(x)*log(P(x)/Q(x)) =P(x)*(log(P(x))-log(Q(x))
+        ------------------------------>P(x)*|log(P(x))-log(Q(x)|
+
+        Args:
+            input: (B, #anchors, #classes) float tensor.
+                Predicted logits for each class
+            target: (B, #anchors, #classes) float tensor.
+                One-hot encoded classification targets
+
+        Returns:
+            loss: (B, #anchors, #classes) float tensor.
+                Sigmoid cross entropy loss without reduction
+        """
+        input_logsig = F.logsigmoid(input)
+        target_sig = F.sigmoid(target)
+        target_logsig = F.logsigmoid(target)
+
+        loss = target_sig * torch.abs(target_logsig-input_logsig)
+
+        return loss
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        klloss = self.klloss_with_logits(input/self.T,target/self.T).sum(dim=-1) * self.T * self.T 
         if self.weighted:
             klloss = klloss* weights
         else:

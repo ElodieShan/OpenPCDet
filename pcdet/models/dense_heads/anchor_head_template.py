@@ -116,16 +116,26 @@ class AnchorHeadTemplate(nn.Module):
             else soft_losses_cfg.HINT_LOSS.TYPE
 
         if self.cls_soft_loss_type is not None:
+            mimic_cls_temperature = soft_losses_cfg.CLS_LOSS.get('TEMPERATURE', 1.0)
             if self.cls_soft_loss_type in ['SigmoidFocalClassificationLoss', 'SigmoidFocalLoss']:
                 self.add_module(
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
                     )
-            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss']:
+            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss']:
                 weighted = soft_losses_cfg.CLS_LOSS.get('WEIGHTED', True)
+                self.mimic_cls_classes_use_only = soft_losses_cfg.CLS_LOSS.get('CLASS_USE_ONLY', False)
+                if self.mimic_cls_classes_use_only: # elodie
+                    class_index = []
+                    num_orient = self.num_anchors_per_location / self.num_class
+                    for i in range(self.num_class):
+                        for j in range(num_orient):
+                            class_index.append((i*2+j)*self.num_class +i)
+                    class_index = np.array(class_index)
+                    print("class_index:",class_index)
                 self.add_module(
                     'soft_cls_loss_func',
-                     getattr(loss_utils, self.cls_soft_loss_type)(weighted=weighted)
+                     getattr(loss_utils, self.cls_soft_loss_type)(weighted=weighted, T=mimic_cls_temperature)
                     )
             else:
                 self.add_module(
@@ -241,7 +251,8 @@ class AnchorHeadTemplate(nn.Module):
         one_hot_targets = one_hot_targets[..., 1:]
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
-        
+
+        # -----------------------------Student Classification Result
         # Student False Positive:  True Positive >0, False Positive <0 elodie
         cls_preds_student_sigmoid = torch.sigmoid(cls_preds)
         cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_sigmoid>self.cls_score_thred,\
@@ -257,7 +268,8 @@ class AnchorHeadTemplate(nn.Module):
         positives_s_tp_num = positives_s_tp.float().sum(-1, keepdim=True)
         cls_preds_student_recall = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean() 
         cls_preds_student_precision = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(positives_student_preds_num, min=1.0)).mean()
-
+        # -------------------------------------------------------------
+        
         tb_dict_soft = {
             'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
             'mimic/cls_preds_student_precision': cls_preds_student_precision.item(),
@@ -374,8 +386,10 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
-
-                cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_sigmoid, cls_preds_teacher_sigmoid, weights=weights)
+                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss']:
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
+                else:
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_sigmoid, cls_preds_teacher_sigmoid, weights=weights)
             
             # print("\n\n---------------------start------------:\n")
             # print("\n\npositives:",positives.sum(1, keepdim=True).float())
