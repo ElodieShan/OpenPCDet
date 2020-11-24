@@ -202,11 +202,12 @@ class Detector3DTemplate(nn.Module):
                 cls_preds = batch_dict['batch_cls_preds'][batch_mask]
 
                 src_cls_preds = cls_preds
-                assert cls_preds.shape[1] in [1, self.num_class, (self.num_class+1)]
+                assert cls_preds.shape[1] in [1, self.num_class, (self.num_class+1)] #elodie
 
                 if not batch_dict['cls_preds_normalized']:
                     # cls_preds = torch.sigmoid(cls_preds)
                     cls_preds = torch.softmax(cls_preds, dim=-1)
+                    # print("cls_preds:",cls_preds.shape)
             else:
                 cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
                 src_cls_preds = cls_preds
@@ -242,19 +243,24 @@ class Detector3DTemplate(nn.Module):
                 final_boxes = torch.cat(pred_boxes, dim=0)
             else:
                 # cls_preds, label_preds = torch.max(cls_preds, dim=-1)
-                cls_preds, label_preds = torch.max(cls_preds[...,1:], dim=-1) #elodie softmax
+                # cls_preds, label_preds = torch.max(cls_preds[...,1:], dim=-1) #elodie softmax
                 # print("cls_preds:",cls_preds)
 
-                # cls_preds, label_preds = torch.max(cls_preds, dim=-1) #elodie softmax
-                
+                cls_preds, label_preds = torch.max(cls_preds, dim=-1) #elodie softmax
+                mask = label_preds >0 
+                cls_preds = cls_preds[mask]
+                label_preds = label_preds[mask]
+                box_preds = box_preds[mask]
+                # print("cls_preds:", cls_preds[mask])
+                # print("label_preds:", label_preds[mask])
                 # print("cls_preds:",cls_preds)
                 # print("label_preds:",label_preds)
 
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
                     label_preds = batch_dict[label_key][index]
-                else: #elodie
-                    label_preds = label_preds + 1
+                # else: #elodie
+                #     label_preds = label_preds + 1
                 selected, selected_scores = model_nms_utils.class_agnostic_nms(
                     box_scores=cls_preds, box_preds=box_preds,
                     nms_config=post_process_cfg.NMS_CONFIG,
@@ -268,7 +274,7 @@ class Detector3DTemplate(nn.Module):
                 final_scores = selected_scores
                 final_labels = label_preds[selected]
                 final_boxes = box_preds[selected]
-                # print("final_labels:",final_labels)
+                # print("final_labels:",label_preds)
                 # elodie
                 # label_mask = final_labels > 0
                 # final_scores = final_scores[label_mask]

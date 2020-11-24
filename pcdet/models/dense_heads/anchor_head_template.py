@@ -195,13 +195,17 @@ class AnchorHeadTemplate(nn.Module):
         cls_preds = self.forward_ret_dict['cls_preds']
         cls_preds = cls_preds.view(cls_preds.shape[0], -1, (self.num_class+1))
         cls_preds = torch.softmax(cls_preds,dim=-1)
-        cls_preds = cls_preds[...,1:]
-        cls_preds_hot_wo_bg =  torch.where(cls_preds>self.cls_score_thred,\
-                             torch.full_like(cls_preds,1), torch.full_like(cls_preds,0))
-        cls_preds_hot_wo_bg_maxarg = cls_preds_hot_wo_bg.argmax(dim=-1)+1
-        cls_preds_one_hot_wo_bg_sum = cls_preds_hot_wo_bg.sum(dim=-1)
-        cls_preds_maxarg = torch.where(cls_preds_one_hot_wo_bg_sum>0, cls_preds_hot_wo_bg_maxarg, torch.full_like(cls_preds_hot_wo_bg_maxarg,0))
+        cls_preds_softmax = torch.softmax(cls_preds,dim=-1)
+        cls_preds_max, cls_preds_maxarg = cls_preds_softmax.max(dim=-1)
         cls_preds_ret = torch.where(cls_preds_maxarg==cls_targets.long(), cls_preds_maxarg, torch.full_like(cls_preds_maxarg,-1, dtype=cls_preds_maxarg.dtype))
+
+        # cls_preds = cls_preds[...,1:]
+        # cls_preds_hot_wo_bg =  torch.where(cls_preds>self.cls_score_thred,\
+        #                      torch.full_like(cls_preds,1), torch.full_like(cls_preds,0))
+        # cls_preds_hot_wo_bg_maxarg = cls_preds_hot_wo_bg.argmax(dim=-1)+1
+        # cls_preds_one_hot_wo_bg_sum = cls_preds_hot_wo_bg.sum(dim=-1)
+        # cls_preds_maxarg = torch.where(cls_preds_one_hot_wo_bg_sum>0, cls_preds_hot_wo_bg_maxarg, torch.full_like(cls_preds_hot_wo_bg_maxarg,0))
+        # cls_preds_ret = torch.where(cls_preds_maxarg==cls_targets.long(), cls_preds_maxarg, torch.full_like(cls_preds_maxarg,-1, dtype=cls_preds_maxarg.dtype))
 
         for i in range(len(self.class_names)):
             positives_preds = torch.where(cls_preds_maxarg==(i+1), cls_preds_ret, torch.full_like(cls_preds_ret,0, dtype=cls_preds_ret.dtype))
@@ -249,23 +253,31 @@ class AnchorHeadTemplate(nn.Module):
         cls_loss = cls_loss_src.sum() / batch_size
         
         # Student False Positive:  True Positive >0, False Positive <0 elodie
-        cls_preds_student_softmax_src = torch.softmax(cls_preds,dim=-1)
-        # cls_preds_student_maxarg = cls_preds_student_softmax.argmax(dim=-1)
-        cls_preds_student_softmax = cls_preds_student_softmax_src[...,1:]
-        cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_softmax>self.cls_score_thred,\
-                             torch.full_like(cls_preds_student_softmax,1), torch.full_like(cls_preds_student_softmax,0))
-        cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
-        cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
-        cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
+        cls_preds_student_softmax = torch.softmax(cls_preds,dim=-1)
+        cls_preds_student_max, cls_preds_student_maxarg = cls_preds_student_softmax.max(dim=-1)
         cls_preds_student_ret = torch.where(cls_preds_student_maxarg==cls_targets.long(), cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,-1, dtype=cls_preds_student_maxarg.dtype))
+
+        # cls_preds_student_softmax = cls_preds_student_softmax_src[...,1:]
+        # cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_softmax>self.cls_score_thred,\
+        #                      torch.full_like(cls_preds_student_softmax,1), torch.full_like(cls_preds_student_softmax,0))
+        # cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
+        # cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
+        # cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
+        # cls_preds_student_ret = torch.where(cls_preds_student_maxarg==cls_targets.long(), cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,-1, dtype=cls_preds_student_maxarg.dtype))
             
         positives_student_preds = cls_preds_student_maxarg > 0
         positives_student_preds_num = positives_student_preds.float().sum(-1, keepdim=True)
+        
         positives_s_tp = cls_preds_student_ret > 0
+        print("positives_s_tp:",cls_preds_student_max[positives_s_tp])
         positives_s_tp_num = positives_s_tp.float().sum(-1, keepdim=True)
         cls_preds_student_recall = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean() 
         cls_preds_student_precision = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(positives_student_preds_num, min=1.0)).mean()
+        print("positives_student_preds_num:",positives_student_preds_num)
+        print("positives_s_tp_num:",positives_s_tp_num)
 
+        print("cls_preds_student_recall:",cls_preds_student_recall)
+        print("cls_preds_student_precision:",cls_preds_student_precision)
         tb_dict_soft = {
             'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
             'mimic/cls_preds_student_precision': cls_preds_student_precision.item(),
