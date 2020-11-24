@@ -355,9 +355,12 @@ class SigmoidKLDivergenceLoss(nn.Module):
         return loss
 
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        klloss = self.klloss_with_logits(input/self.T,target/self.T).sum(dim=-1) * self.T * self.T 
+        klloss = self.klloss_with_logits(input/self.T,target/self.T) * self.T * self.T 
         if self.weighted:
-            klloss = klloss* weights
+            if len(weights.shape)>2:
+                klloss = (klloss* weights).sum(dim=-1)
+            else:
+                klloss = klloss.sum(dim=-1)* weights
         else:
             klloss = klloss.mean(dim=-1)
         return klloss

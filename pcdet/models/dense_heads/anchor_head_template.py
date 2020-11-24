@@ -46,6 +46,7 @@ class AnchorHeadTemplate(nn.Module):
             self.reg_soft_loss_type = None
             self.dir_soft_loss_type = None
             self.hint_soft_loss_type = None
+            self.mimic_cls_classes_use_only = False
         
         self.pr_dict={
             "cls_tp_num":torch.from_numpy(np.ones(self.num_class)),

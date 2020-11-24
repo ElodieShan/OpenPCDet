@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from . import box_utils
 
 
-class SoftWeightedLoss(nn.Module):
+class HintMimic(nn.Module):
 
     def __init__(self, margin: float = 0.0, alpha: float = 1.0):
         """
@@ -14,7 +14,7 @@ class SoftWeightedLoss(nn.Module):
             margin: Weighting parameter to balance loss for hard and easy examples.
             alpha: Weighting parameter to balance loss for hard and easy loss.
         """
-        super(SoftWeightedLoss, self).__init__()
+        super(HintMimic, self).__init__()
         self.margin = margin
         self.alpha = alpha
 
