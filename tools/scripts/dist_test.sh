@@ -24,10 +24,10 @@ PY_ARGS=${@:2}
 # EPOCH=40
 # TAG=pretrained_mse2_ttp0_2_sfp5_reg_a3m1e_5_hintl2_0_3_ttp1_sfp0_5
 
-CFG_DIR=../output/kitti_models/second_softmax_mimic/softmax_kl5_gt10
-CFG_FILE=second_mimic_KL0.yaml
-EPOCH=40
-TAG=pr_eval
+CFG_DIR=../output/kitti_models/second/SoftmaxFocalClassificationLoss2
+CFG_FILE=second.yaml
+EPOCH=80
+TAG=pr_eval_all_class
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=2 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
