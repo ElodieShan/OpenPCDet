@@ -138,12 +138,16 @@ class DataProcessor(object):
         # assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
         assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
         assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
+        assert config.DOWNSAMPLE_TYPE in ['VLP16','TensorPro'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]
         # if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
         if data_type == "kitti":
-            points_16lines = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+            if config.DOWNSAMPLE_TYPE == "TensorPro":
+                points_16lines = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+            elif config.DOWNSAMPLE_TYPE == "VLP16":
+                points_16lines = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=True)
         if data_type == "nuscenes":
             points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
             points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])

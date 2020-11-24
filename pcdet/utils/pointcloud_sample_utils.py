@@ -17,6 +17,15 @@ def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True)
         points = points[mask]
     return points
 
+
+def downsample_kitti_to_VLP16(points, ring, verticle_switch=True):
+    if verticle_switch:
+        ring_remained = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61]
+        mask = np.in1d(ring,ring_remained)
+        points = points[mask] # faster
+        ring = ring[mask]
+    return points
+
 def downsample_nusc_v2(points, ring):
     # if points.shape[1]!=5:
     #     print("points attribution do not contains ring num..")
