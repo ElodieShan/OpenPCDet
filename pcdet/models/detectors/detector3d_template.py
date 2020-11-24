@@ -243,10 +243,17 @@ class Detector3DTemplate(nn.Module):
             else:
                 # cls_preds, label_preds = torch.max(cls_preds, dim=-1)
                 cls_preds, label_preds = torch.max(cls_preds[...,1:], dim=-1) #elodie softmax
+                # print("cls_preds:",cls_preds)
+
+                # cls_preds, label_preds = torch.max(cls_preds, dim=-1) #elodie softmax
+                
+                # print("cls_preds:",cls_preds)
+                # print("label_preds:",label_preds)
+
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
                     label_preds = batch_dict[label_key][index]
-                else:
+                else: #elodie
                     label_preds = label_preds + 1
                 selected, selected_scores = model_nms_utils.class_agnostic_nms(
                     box_scores=cls_preds, box_preds=box_preds,
@@ -257,10 +264,17 @@ class Detector3DTemplate(nn.Module):
                 if post_process_cfg.OUTPUT_RAW_SCORE:
                     max_cls_preds, _ = torch.max(src_cls_preds, dim=-1)
                     selected_scores = max_cls_preds[selected]
-
+                # print("final_labels0:",label_preds)
                 final_scores = selected_scores
                 final_labels = label_preds[selected]
                 final_boxes = box_preds[selected]
+                # print("final_labels:",final_labels)
+                # elodie
+                # label_mask = final_labels > 0
+                # final_scores = final_scores[label_mask]
+                # final_labels = final_labels[label_mask]
+                # final_boxes = final_boxes[label_mask]
+                # print("final_labels1:",final_labels)
 
             recall_dict = self.generate_recall_record(
                 box_preds=final_boxes if 'rois' not in batch_dict else src_box_preds,
