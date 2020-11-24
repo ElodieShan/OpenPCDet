@@ -17,6 +17,22 @@ def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True)
         points = points[mask]
     return points
 
+def downsample_kitti_v2(points, ring, verticle_switch=True, horizontal_switch=True):
+    if verticle_switch:
+        ring_remained = [6, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 33, 35, 37]        
+        # ring_remained = [8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 33, 35, 37, 38]
+        mask = np.in1d(ring,ring_remained)
+        points = points[mask] # faster
+        ring = ring[mask]
+    if horizontal_switch:
+        distances = np.array(get_distances_2d(points)).T
+        distances = np.fabs(distances[1:] - distances[:-1])
+        np.append(distances,0)
+        half_mask = np.arange(0,points.shape[0]-1,2)
+        mask = np.ones(points.shape[0], dtype=bool)
+        mask[half_mask[np.any((distances[half_mask] < 0.1,distances[half_mask-1] < 0.1),axis=0)]] = False
+        points = points[mask]
+    return points
 
 def downsample_kitti_to_VLP16(points, ring, verticle_switch=True):
     if verticle_switch:
