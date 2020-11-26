@@ -324,6 +324,27 @@ class WeightedKLDivergenceLoss(nn.Module):
         # print("klloss:",klloss.sum()/2)
         return klloss
 
+class WeightedKLDivergenceLoss_v2(nn.Module):
+    def __init__(self, T=1.0, weighted=True):
+        super(WeightedKLDivergenceLoss_v2, self).__init__()
+        self.T = T
+        self.weighted = weighted
+    
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
+        input = torch.sigmoid(input)
+        target = torch.sigmoid(target)
+
+        input = F.log_softmax(input/self.T, dim=-1)
+        target = F.softmax(target/self.T, dim=-1)
+
+        klloss = F.kl_div(input, target, reduction='none').sum(dim=-1) * self.T * self.T 
+        if self.weighted:
+            klloss = klloss* weights
+        else:
+            klloss = klloss.mean(dim=-1)
+        # print("klloss:",klloss.sum()/2)
+        return klloss
+
 class SigmoidKLDivergenceLoss(nn.Module):
     def __init__(self, T=1.0, weighted=True):
         super(SigmoidKLDivergenceLoss, self).__init__()
@@ -399,7 +420,10 @@ class SoftmaxKLDivergenceLoss(nn.Module):
         klloss = self.softmax_klloss_with_logits(input/self.T,target/self.T) * self.T * self.T 
 
         if self.weighted:
-            klloss = (klloss* weights).sum(dim=-1)
+            if len(weights.shape)>2:
+                klloss = (klloss* weights).sum(dim=-1)
+            else:
+                klloss = klloss.sum(dim=-1)* weights
         else:
             klloss = klloss.mean(dim=-1)
         print("klloss:",klloss.sum()/2)

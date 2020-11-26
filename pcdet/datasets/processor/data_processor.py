@@ -140,7 +140,7 @@ class DataProcessor(object):
         assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
-        assert config.DOWNSAMPLE_TYPE in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
+        assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]

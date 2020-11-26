@@ -36,17 +36,19 @@ class AnchorHeadTemplate(nn.Module):
         self.build_losses(self.model_cfg.LOSS_CONFIG)
 
         self.model_cfg.SOFT_LOSS_CONFIG = self.model_cfg.get('SOFT_LOSS_CONFIG', None) # elodie soft loss
-        self.cls_score_thred = cls_score_thred
+        self.cls_score_thred = self.model_cfg.LOSS_CONFIG.get('CLS_SCORE_THRED', cls_score_thred)
         
         if self.model_cfg.SOFT_LOSS_CONFIG is not None:
             self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
             self.soft_loss_weights = {}
+            self.mimic_cls_classes_use_only = False
         else:
             self.cls_soft_loss_type = None
             self.reg_soft_loss_type = None
             self.dir_soft_loss_type = None
             self.hint_soft_loss_type = None
             self.mimic_cls_classes_use_only = False
+            
         
         self.pr_dict={
             "cls_tp_num":torch.from_numpy(np.ones(self.num_class)),
@@ -123,7 +125,7 @@ class AnchorHeadTemplate(nn.Module):
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
                     )
-            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
+            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                 weighted = soft_losses_cfg.CLS_LOSS.get('WEIGHTED', True)
                 self.mimic_cls_classes_use_only = soft_losses_cfg.CLS_LOSS.get('CLASS_USE_ONLY', False)
                 if self.mimic_cls_classes_use_only: # elodie
@@ -394,7 +396,7 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
-                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss','SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
+                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                     if self.mimic_cls_classes_use_only: # elodie
                         weights = weights.view(batch_size, -1, self.class_index.shape[0])
                         cls_soft_loss = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights)
@@ -747,8 +749,14 @@ class AnchorHeadTemplate(nn.Module):
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
         for feature_ in self.hint_feature_list:
-            student_feature = student_data_dict[feature_]
-            teacher_feature = teacher_data_dict[feature_]
+            if feature_[:len('x_conv')] == 'x_conv':
+                student_feature = student_data_dict['multi_scale_3d_features'][feature_]
+                teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
+                print("batch_dict['multi_scale_3d_features'][src_name].features:",student_feature.features)
+                print("cur_coords:", student_feature.indices)
+            else:
+                student_feature = student_data_dict[feature_]
+                teacher_feature = teacher_data_dict[feature_]
             
             # frame_id =  student_data_dict['frame_id'][0]
             # print("frame_id:",frame_id)
