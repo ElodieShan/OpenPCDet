@@ -517,7 +517,7 @@ class SoftmaxKLDivergenceLoss(nn.Module):
                 klloss = klloss.sum(dim=-1)* weights
         else:
             klloss = klloss.mean(dim=-1)
-        print("klloss:",klloss.sum()/2)
+        # print("klloss:",klloss.sum()/2)
         return klloss
 
 class BoundedRegressionLoss(nn.Module):
