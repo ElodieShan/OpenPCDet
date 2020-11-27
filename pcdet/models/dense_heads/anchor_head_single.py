@@ -13,7 +13,7 @@ class AnchorHeadSingle(AnchorHeadTemplate):
         )
 
         self.num_anchors_per_location = sum(self.num_anchors_per_location)
-
+     
         self.conv_cls = nn.Conv2d(
             input_channels, self.num_anchors_per_location * self.num_class,
             kernel_size=1

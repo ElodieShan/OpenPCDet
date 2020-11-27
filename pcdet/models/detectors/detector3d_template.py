@@ -19,6 +19,7 @@ class Detector3DTemplate(nn.Module):
         self.class_names = dataset.class_names
         self.register_buffer('global_step', torch.LongTensor(1).zero_())
 
+        self.add_bg_class = False # elodie
         self.module_topology = [
             'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
             'backbone_2d', 'dense_head',  'point_head', 'roi_head'
@@ -119,6 +120,7 @@ class Detector3DTemplate(nn.Module):
     def build_dense_head(self, model_info_dict):
         if self.model_cfg.get('DENSE_HEAD', None) is None:
             return None, model_info_dict
+        self.add_bg_class = self.model_cfg.DENSE_HEAD.get('ADD_BACKGROUND_CLASS', False) # elodie
         dense_head_module = dense_heads.__all__[self.model_cfg.DENSE_HEAD.NAME](
             model_cfg=self.model_cfg.DENSE_HEAD,
             input_channels=model_info_dict['num_bev_features'],
@@ -202,15 +204,21 @@ class Detector3DTemplate(nn.Module):
                 cls_preds = batch_dict['batch_cls_preds'][batch_mask]
 
                 src_cls_preds = cls_preds
-                assert cls_preds.shape[1] in [1, self.num_class]
+                assert cls_preds.shape[1] in [1, self.num_class, self.num_class+1]
 
                 if not batch_dict['cls_preds_normalized']:
-                    cls_preds = torch.sigmoid(cls_preds)
+                    if self.add_bg_class:
+                        cls_preds = torch.softmax(cls_preds, dim=-1)
+                    else:
+                        cls_preds = torch.sigmoid(cls_preds)
             else:
                 cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
                 src_cls_preds = cls_preds
                 if not batch_dict['cls_preds_normalized']:
-                    cls_preds = [torch.sigmoid(x) for x in cls_preds]
+                    if self.add_bg_class:
+                        cls_preds = [torch.softmax(x, dim=-1) for x in cls_preds]
+                    else:
+                        cls_preds = [torch.sigmoid(x) for x in cls_preds]
 
             if post_process_cfg.NMS_CONFIG.MULTI_CLASSES_NMS:
                 if not isinstance(cls_preds, list):
@@ -240,11 +248,18 @@ class Detector3DTemplate(nn.Module):
                 final_boxes = torch.cat(pred_boxes, dim=0)
             else:
                 cls_preds, label_preds = torch.max(cls_preds, dim=-1)
+                if self.add_bg_class:
+                    mask = label_preds >0
+                    cls_preds = cls_preds[mask]
+                    label_preds = label_preds[mask]
+                    box_preds = box_preds[mask]
+
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
                     label_preds = batch_dict[label_key][index]
                 else:
-                    label_preds = label_preds + 1
+                    if not self.add_bg_class:
+                        label_preds = label_preds + 1
                 selected, selected_scores = model_nms_utils.class_agnostic_nms(
                     box_scores=cls_preds, box_preds=box_preds,
                     nms_config=post_process_cfg.NMS_CONFIG,

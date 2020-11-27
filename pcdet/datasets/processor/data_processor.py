@@ -91,10 +91,14 @@ class DataProcessor(object):
             data_dict['16lines']['voxels'] = voxels_16lines
             data_dict['16lines']['voxel_coords'] = coordinates_16lines
             data_dict['16lines']['voxel_num_points'] = num_points_16lines
-        # test
-        # data_dict['voxels'] = voxels_16lines
-        # data_dict['voxel_coords'] = coordinates_16lines
-        # data_dict['voxel_num_points'] = num_points_16lines
+        # print("1---------------------")
+        # print("data_dict['voxels']:",data_dict['voxels'])
+        # print("data_dict['voxel_coords']:",data_dict['voxel_coords'])
+        # print("data_dict['voxel_num_points']:",data_dict['voxel_num_points'])
+        # print("2---------------------")
+        # print("16lines data_dict['voxels']:",data_dict['16lines']['voxels'])
+        # print("16lines data_dict['voxel_coords']:",data_dict['16lines']['voxel_coords'])
+        # print("16lines data_dict['voxel_num_points']:",data_dict['16lines']['voxel_num_points'])
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):

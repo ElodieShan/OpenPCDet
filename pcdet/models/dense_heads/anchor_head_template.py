@@ -32,8 +32,15 @@ class AnchorHeadTemplate(nn.Module):
         self.anchors = [x.cuda() for x in anchors]
         self.target_assigner = self.get_target_assigner(anchor_target_cfg)
 
+        # elodie add background class and use softmax activation
+        # class 0:background 1:car 2:ped 3:cyclist
+        self.add_bg_class = self.model_cfg.get('ADD_BACKGROUND_CLASS', False)
+        if self.add_bg_class:
+            self.num_class += 1
+
         self.forward_ret_dict = {}
         self.build_losses(self.model_cfg.LOSS_CONFIG)
+
 
         self.model_cfg.SOFT_LOSS_CONFIG = self.model_cfg.get('SOFT_LOSS_CONFIG', None) # elodie soft loss
         self.cls_score_thred = self.model_cfg.LOSS_CONFIG.get('CLS_SCORE_THRED', cls_score_thred)
@@ -93,10 +100,17 @@ class AnchorHeadTemplate(nn.Module):
         return target_assigner
 
     def build_losses(self, losses_cfg):
-        self.add_module(
-            'cls_loss_func',
-            loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
-        )
+        if self.add_bg_class:
+            self.add_module(
+                'cls_loss_func',
+                loss_utils.SoftmaxFocalClassificationLoss1(alpha=0.25, gamma=2.0)
+            )
+        else:
+            self.add_module(
+                'cls_loss_func',
+                loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
+            )
+        
         reg_loss_name = 'WeightedSmoothL1Loss' if losses_cfg.get('REG_LOSS_TYPE', None) is None \
             else losses_cfg.REG_LOSS_TYPE
         self.add_module(
@@ -201,20 +215,28 @@ class AnchorHeadTemplate(nn.Module):
 
         cls_preds = self.forward_ret_dict['cls_preds']
         cls_preds = cls_preds.view(cls_preds.shape[0], -1, self.num_class)
-        cls_preds = torch.sigmoid(cls_preds)
-        cls_preds_hot_wo_bg =  torch.where(cls_preds>self.cls_score_thred,\
-                             torch.full_like(cls_preds,1), torch.full_like(cls_preds,0))
-        cls_preds_hot_wo_bg_maxarg = cls_preds_hot_wo_bg.argmax(dim=-1)+1
-        cls_preds_one_hot_wo_bg_sum = cls_preds_hot_wo_bg.sum(dim=-1)
-        cls_preds_maxarg = torch.where(cls_preds_one_hot_wo_bg_sum>0, cls_preds_hot_wo_bg_maxarg, torch.full_like(cls_preds_hot_wo_bg_maxarg,0))
+        if self.add_bg_class:
+            cls_preds_softmax = torch.softmax(cls_preds,dim=-1)
+            cls_preds_max, cls_preds_maxarg = cls_preds_softmax.max(dim=-1)
+        else:
+            cls_preds = torch.sigmoid(cls_preds)
+            cls_preds_hot_wo_bg =  torch.where(cls_preds>self.cls_score_thred,\
+                                torch.full_like(cls_preds,1), torch.full_like(cls_preds,0))
+            cls_preds_hot_wo_bg_maxarg = cls_preds_hot_wo_bg.argmax(dim=-1)+1
+            cls_preds_one_hot_wo_bg_sum = cls_preds_hot_wo_bg.sum(dim=-1)
+            cls_preds_maxarg = torch.where(cls_preds_one_hot_wo_bg_sum>0, cls_preds_hot_wo_bg_maxarg, torch.full_like(cls_preds_hot_wo_bg_maxarg,0))
+        
+        # True Positive>0 / True BackGround=0 / False Negtive or False Positive=-1
         cls_preds_ret = torch.where(cls_preds_maxarg==cls_targets.long(), cls_preds_maxarg, torch.full_like(cls_preds_maxarg,-1, dtype=cls_preds_maxarg.dtype))
 
         for i in range(len(self.class_names)):
+            # For Class i+1: True Positive>0 /False Positive=-1 / other=0
             positives_preds = torch.where(cls_preds_maxarg==(i+1), cls_preds_ret, torch.full_like(cls_preds_ret,0, dtype=cls_preds_ret.dtype))
             preds_tp = positives_preds>0
             self.pr_dict['cls_tp_num'][i] += preds_tp.float().sum()
             preds_fp = positives_preds<0
             self.pr_dict['cls_fp_num'][i] += preds_fp.float().sum()
+            # For Class i+1: True Positive>0 /False Negtive=-1 / other=0
             positives_gt = torch.where(cls_targets==(i+1), cls_preds_ret, torch.full_like(cls_preds_ret,0, dtype=cls_preds_ret.dtype))
             preds_fn = positives_gt<0
             self.pr_dict['cls_fn_num'][i] += preds_fn.float().sum()
@@ -245,9 +267,16 @@ class AnchorHeadTemplate(nn.Module):
         cls_targets = cls_targets.unsqueeze(dim=-1)
 
         cls_targets = cls_targets.squeeze(dim=-1)
-        one_hot_targets = torch.zeros(
-            *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
-        )
+
+        if self.add_bg_class:
+            one_hot_targets = torch.zeros(
+                *list(cls_targets.shape), self.num_class, dtype=cls_preds.dtype, device=cls_targets.device
+            )
+        else:
+            one_hot_targets = torch.zeros(
+                *list(cls_targets.shape), self.num_class + 1, dtype=cls_preds.dtype, device=cls_targets.device
+            )
+
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
 
         if self.mimic_cls_classes_use_only: # elodie
@@ -255,18 +284,25 @@ class AnchorHeadTemplate(nn.Module):
             cls_preds_per_location = cls_preds_per_location.view(batch_size, -1, self.class_index.shape[0])
 
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
-        one_hot_targets = one_hot_targets[..., 1:]
+
+        if not self.add_bg_class:
+            one_hot_targets = one_hot_targets[..., 1:]
+
         cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
 
         # -----------------------------Student Classification Result
         # Student False Positive:  True Positive >0, False Positive <0 elodie
-        cls_preds_student_sigmoid = torch.sigmoid(cls_preds)
-        cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_sigmoid>self.cls_score_thred,\
-                             torch.full_like(cls_preds_student_sigmoid,1), torch.full_like(cls_preds_student_sigmoid,0))
-        cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
-        cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
-        cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
+        if self.add_bg_class:
+            cls_preds_student_activated = torch.softmax(cls_preds,dim=-1)
+            cls_preds_student_max, cls_preds_student_maxarg = cls_preds_student_activated.max(dim=-1)
+        else:
+            cls_preds_student_activated = torch.sigmoid(cls_preds)
+            cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_activated>self.cls_score_thred,\
+                                torch.full_like(cls_preds_student_activated,1), torch.full_like(cls_preds_student_activated,0))
+            cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
+            cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
+            cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
         cls_preds_student_ret = torch.where(cls_preds_student_maxarg==cls_targets.long(), cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,-1, dtype=cls_preds_student_maxarg.dtype))
             
         positives_student_preds = cls_preds_student_maxarg > 0
@@ -282,6 +318,7 @@ class AnchorHeadTemplate(nn.Module):
             'mimic/cls_preds_student_precision': cls_preds_student_precision.item(),
             'mimic/cls_preds_student_recall': cls_preds_student_recall.item(),
         }
+        
         if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
             self.soft_loss_weights['weights_gt'] = reg_weights
             
@@ -290,14 +327,20 @@ class AnchorHeadTemplate(nn.Module):
                 cls_preds_teacher_per_location = cls_preds_teacher[..., self.class_index]
                 cls_preds_teacher_per_location = cls_preds_teacher_per_location.view(batch_size, -1, self.class_index.shape[0])
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
-            cls_preds_teacher_sigmoid = torch.sigmoid(cls_preds_teacher)
-            cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_sigmoid>self.cls_score_thred,\
-                             torch.full_like(cls_preds_teacher_sigmoid,1), torch.full_like(cls_preds_teacher_sigmoid,0))
-            cls_preds_teacher_max = cls_preds_teacher_sigmoid.max(dim=-1)
-            cls_preds_teacher_maxarg = cls_preds_teacher_one_hot_wo_bg.argmax(dim=-1) + 1
-            cls_preds_teacher_one_hot_wo_bg_sum = cls_preds_teacher_one_hot_wo_bg.sum(dim=-1)
-            cls_preds_teacher_maxarg = torch.where(cls_preds_teacher_one_hot_wo_bg_sum>0, cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
             
+            if self.add_bg_class:
+                cls_preds_teacher_activated = torch.softmax(cls_preds_teacher,dim=-1)
+                cls_preds_teacher_max, cls_preds_teacher_maxarg = cls_preds_teacher_activated.max(dim=-1)
+            else:
+                cls_preds_teacher_activated = torch.sigmoid(cls_preds_teacher)
+                cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_activated>self.cls_score_thred,\
+                                torch.full_like(cls_preds_teacher_activated,1), torch.full_like(cls_preds_teacher_activated,0))
+                cls_preds_teacher_max = cls_preds_teacher_activated.max(dim=-1)
+                cls_preds_teacher_max = cls_preds_teacher_max.values
+                cls_preds_teacher_maxarg = cls_preds_teacher_one_hot_wo_bg.argmax(dim=-1) + 1
+                cls_preds_teacher_one_hot_wo_bg_sum = cls_preds_teacher_one_hot_wo_bg.sum(dim=-1)
+                cls_preds_teacher_maxarg = torch.where(cls_preds_teacher_one_hot_wo_bg_sum>0, cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
+                
             positives_teacher_preds = cls_preds_teacher_maxarg > 0 # Teacher Positive
             negatives_teacher_preds = cls_preds_teacher_maxarg == 0
             positives_teacher_preds_num = positives_teacher_preds.sum(1, keepdim=True).float()
@@ -309,7 +352,7 @@ class AnchorHeadTemplate(nn.Module):
                     cls_preds_teacher_maxarg, cls_preds_teacher_ret)
 
             # Teacher Preds False Positive with high confidence >0.8 including true positive > thred
-            cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_max.values>0.8,\
+            cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_max>0.8,\
                              cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
             cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_whc_ret>0, cls_preds_teacher_whc_ret, cls_preds_teacher_ret)
             positives_t_whc = cls_preds_teacher_whc_ret > 0
@@ -376,7 +419,7 @@ class AnchorHeadTemplate(nn.Module):
 
                     cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_one_hot.float(), weights=cls_weights_t)  # [N, M]
                 elif self.cls_soft_loss_type == 'SigmoidFocalLoss':
-                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_sigmoid, weights=cls_weights_t)  # [N, M]
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_activated, weights=cls_weights_t)  # [N, M]
 
             else:
                 if self.cls_soft_loss_source is None:
@@ -440,11 +483,11 @@ class AnchorHeadTemplate(nn.Module):
                         #     print(i, '- ', n, "- cls_targets:\t", cls_targets[0,i])
                         #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
                         #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
-                        #     print(i, "- cls_preds_student_sigmoid:\t", cls_preds_sigmoid[0,i])
+                        #     print(i, "- cls_preds_student_activated:\t", cls_preds_sigmoid[0,i])
                         #     print(i, "- cls_preds_student_maxarg:\t", cls_preds_student_maxarg[0,i])
                         #     print(i, "- cls_preds_student result:\t", cls_preds_student_ret[0,i],"\n")
                         #     print(i, "- cls_preds_teacher:\t", cls_preds_teacher[0,i])
-                        #     print(i, "- cls_preds_teacher_sigmoid:\t", cls_preds_teacher_sigmoid[0,i])
+                        #     print(i, "- cls_preds_teacher_activated:\t", cls_preds_teacher_activated[0,i])
                         #     print(i, "- cls_preds_teacher_maxarg:\t", cls_preds_teacher_maxarg[0,i])
                         #     print(i, "- cls_preds_teacher result:\t", cls_preds_teacher_ret[0,i])
                         #     print(i, "- cls_preds_teacher P include high conf:\t", cls_preds_teacher_whc_ret[0,i],'\n')
@@ -460,30 +503,24 @@ class AnchorHeadTemplate(nn.Module):
                     else:
                         cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher, weights=weights)
                 else:
-                    cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_sigmoid, cls_preds_teacher_sigmoid, weights=weights)
+                    cls_soft_loss = self.soft_cls_loss_func(cls_preds_student_activated, cls_preds_teacher_activated, weights=weights)
             
             # print("\n\n---------------------start------------:\n")
             # print("\n\npositives:",positives.sum(1, keepdim=True).float())
             # print("\nnegatives:",negatives.sum(1, keepdim=True).float(),"\n")
             # print("\n\npositives_teacher:",positives_teacher_preds_num)
             # print("\nnegatives_teacher:",negatives_teacher_preds.sum(1, keepdim=True).float(),"\n")
-            # cls_preds_sigmoid = torch.sigmoid(cls_preds)
 
-            # cls_preds_student_maxarg2 = torch.where(cls_targets==3, torch.full_like(cls_targets,1), torch.full_like(cls_targets,0))
-            # cls_preds_student_maxarg2 = torch.where(cls_preds_student_maxarg==2, cls_preds_student_maxarg2, torch.full_like(cls_targets,0))
-            # cls_preds_student_maxarg2_num = cls_preds_student_maxarg2.float().sum(-1, keepdim=True)
-            # if cls_preds_student_maxarg2_num.sum()>0:
-            #     print("cls_preds_student_maxarg2_num:",cls_preds_student_maxarg2_num)
             # for i in range(cls_targets.shape[-1]):
             # # for i in range(10):
             #     print(i, "- cls_targets:\t", cls_targets[0,i])
             #     print(i, "- one_hot_targets:\t", one_hot_targets[0,i],'\n')
             #     print(i, "- cls_preds_student:\t", cls_preds[0,i])
-            #     print(i, "- cls_preds_student_sigmoid:\t", cls_preds_sigmoid[0,i])
+            #     print(i, "- cls_preds_student_activated:\t", cls_preds_student_activated[0,i])
             #     print(i, "- cls_preds_student_maxarg:\t", cls_preds_student_maxarg[0,i])
             #     print(i, "- cls_preds_student result:\t", cls_preds_student_ret[0,i],"\n")
             #     print(i, "- cls_preds_teacher:\t", cls_preds_teacher[0,i])
-            #     print(i, "- cls_preds_teacher_sigmoid:\t", cls_preds_teacher_sigmoid[0,i])
+            #     print(i, "- cls_preds_teacher_activated:\t", cls_preds_teacher_activated[0,i])
             #     print(i, "- cls_preds_teacher_maxarg:\t", cls_preds_teacher_maxarg[0,i])
             #     print(i, "- cls_preds_teacher result:\t", cls_preds_teacher_ret[0,i])
             #     print(i, "- cls_preds_teacher P include high conf:\t", cls_preds_teacher_whc_ret[0,i],'\n')
