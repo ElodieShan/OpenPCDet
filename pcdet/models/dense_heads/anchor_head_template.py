@@ -789,8 +789,21 @@ class AnchorHeadTemplate(nn.Module):
             if feature_[:len('x_conv')] == 'x_conv':
                 student_feature = student_data_dict['multi_scale_3d_features'][feature_]
                 teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
-                print("batch_dict['multi_scale_3d_features'][src_name].features:",student_feature.features)
-                print("cur_coords:", student_feature.indices)
+                # student_feature_dense = student_feature.dense()
+                # teacher_feature_dense = teacher_feature.dense()
+                # print('-------------------------------------')
+
+                # print(student_feature_dense.features)
+                # print(teacher_feature_dense.features)
+                # print('-------------------------------------')
+
+                # print('-------------------------------------')
+                # print("student_feature batch_dict['multi_scale_3d_features'][src_name].features:",student_feature.features)
+                # print("student_feature cur_coords:", student_feature.indices)
+                # print('-------------------------------------')
+                # print("student_feature batch_dict['multi_scale_3d_features'][src_name].features:",teacher_feature.features)
+                # print("student_feature cur_coords:", teacher_feature.indices)
+                # print("indice_dict:",teacher_feature.indice_dict)
             else:
                 student_feature = student_data_dict[feature_]
                 teacher_feature = teacher_data_dict[feature_]

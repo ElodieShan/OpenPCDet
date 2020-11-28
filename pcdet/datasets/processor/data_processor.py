@@ -38,7 +38,13 @@ class DataProcessor(object):
             shuffle_idx = np.random.permutation(points.shape[0])
             points = points[shuffle_idx]
             data_dict['points'] = points
-
+        low_res_shuffle = config.get('LOW_RES_SHUFFLE_ENABLED', None)
+        if low_res_shuffle is not None and low_res_shuffle[self.mode]:
+            if '16lines' in data_dict: #elodie
+                points_16lines = data_dict['16lines']['points_16lines']
+                shuffle_idx_16lines = np.random.permutation(points_16lines.shape[0])
+                points_16lines = points_16lines[shuffle_idx_16lines]
+                data_dict['16lines']['points_16lines'] = points_16lines
         return data_dict
 
     def transform_points_to_voxels(self, data_dict=None, config=None, voxel_generator=None):
