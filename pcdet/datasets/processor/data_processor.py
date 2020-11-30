@@ -33,11 +33,6 @@ class DataProcessor(object):
         if data_dict is None:
             return partial(self.shuffle_points, config=config)
 
-        if config.SHUFFLE_ENABLED[self.mode]:
-            points = data_dict['points']
-            shuffle_idx = np.random.permutation(points.shape[0])
-            points = points[shuffle_idx]
-            data_dict['points'] = points
         low_res_shuffle = config.get('LOW_RES_SHUFFLE_ENABLED', None)
         if low_res_shuffle is not None and low_res_shuffle[self.mode]:
             if '16lines' in data_dict: #elodie
@@ -45,6 +40,22 @@ class DataProcessor(object):
                 shuffle_idx_16lines = np.random.permutation(points_16lines.shape[0])
                 points_16lines = points_16lines[shuffle_idx_16lines]
                 data_dict['16lines']['points_16lines'] = points_16lines
+
+        if "16lines" in data_dict and "extra_points_16lines" in data_dict["16lines"]:
+            if config.SHUFFLE_ENABLED[self.mode]:
+                extra_points = data_dict['16lines']['extra_points_16lines']
+                shuffle_idx = np.random.permutation(extra_points.shape[0])
+                extra_points = extra_points[shuffle_idx]
+                data_dict['points'] = np.vstack((data_dict['16lines']['points_16lines'], extra_points))
+            else:
+                data_dict['points'] = np.vstack((data_dict['16lines']['points_16lines'], data_dict['16lines']['extra_points_16lines']))
+            data_dict['16lines'].pop('extra_points_16lines')
+        else:
+            if config.SHUFFLE_ENABLED[self.mode]:
+                points = data_dict['points']
+                shuffle_idx = np.random.permutation(points.shape[0])
+                points = points[shuffle_idx]
+                data_dict['points'] = points
         return data_dict
 
     def transform_points_to_voxels(self, data_dict=None, config=None, voxel_generator=None):
@@ -97,14 +108,9 @@ class DataProcessor(object):
             data_dict['16lines']['voxels'] = voxels_16lines
             data_dict['16lines']['voxel_coords'] = coordinates_16lines
             data_dict['16lines']['voxel_num_points'] = num_points_16lines
-        # print("1---------------------")
-        # print("data_dict['voxels']:",data_dict['voxels'])
-        # print("data_dict['voxel_coords']:",data_dict['voxel_coords'])
-        # print("data_dict['voxel_num_points']:",data_dict['voxel_num_points'])
-        # print("2---------------------")
-        # print("16lines data_dict['voxels']:",data_dict['16lines']['voxels'])
-        # print("16lines data_dict['voxel_coords']:",data_dict['16lines']['voxel_coords'])
-        # print("16lines data_dict['voxel_num_points']:",data_dict['16lines']['voxel_num_points'])
+        # print("\n\n1---------------------\ndata_dict['points']:",data_dict['points'],"\n2---------------------data_dict['points_16lines']:",data_dict['16lines']['points_16lines'])
+        # print("\n\n1---------------------\ndata_dict['voxel_coords']:",data_dict['voxel_coords'],"\n2---------------------data_dict['16lines voxel_coords']:",data_dict['16lines']['voxel_coords'])
+
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):
@@ -151,13 +157,13 @@ class DataProcessor(object):
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
         assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
-
+        align_points = config.get('ALIGN_POINTS', False) # elodie : if align_points is False, extra_points will be None 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]
-        # if data_dict["metadata"]["preprocess_type"]["sample"]: # elodie -change for data aug of data 20200905
+
         if data_type == "kitti":
             if downsample_type == "TensorPro":
-                points_16lines = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True, return_extra_points=align_points)
             elif downsample_type == "TensorPro_v2":
                 points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
             elif downsample_type == "VLP16":
@@ -170,7 +176,8 @@ class DataProcessor(object):
         else:
             data_dict['16lines'] = {}
             data_dict['16lines']['points_16lines'] = points_16lines
-
+            if align_points:
+                data_dict['16lines']['extra_points_16lines'] = extra_points
         data_dict.pop('ring')
         return data_dict
 

@@ -1,10 +1,13 @@
 import numpy as np
 from .pointcloud_utils import *
 
-def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True):
+def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True, return_extra_points=False):
+    extra_points = None
     if verticle_switch:
         ring_remained = [33, 32, 29, 27, 25, 23, 21, 19, 16, 14, 12, 10, 8, 6, 4, 2]
         mask = np.in1d(ring,ring_remained)
+        if return_extra_points:
+            extra_points = points[~mask]
         points = points[mask] # faster
         ring = ring[mask]
     if horizontal_switch:
@@ -14,8 +17,10 @@ def downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=True)
         half_mask = np.arange(0,points.shape[0]-1,2)
         mask = np.ones(points.shape[0], dtype=bool)
         mask[half_mask[np.any((distances[half_mask] < 0.1,distances[half_mask-1] < 0.1),axis=0)]] = False
+        if return_extra_points:
+            extra_points = points[~mask] if extra_points is None else np.vstack((extra_points,points[~mask]))
         points = points[mask]
-    return points
+    return points, extra_points
 
 def downsample_kitti_v2(points, ring, verticle_switch=True, horizontal_switch=True):
     if verticle_switch:

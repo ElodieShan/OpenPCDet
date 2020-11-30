@@ -328,16 +328,11 @@ class HintL2Loss(nn.Module):
         self.T = T
 
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
-        input = input.permute(0, 2, 3, 1) # [N,H,W,C]
-        input = input.view(input.shape[0], -1, input.shape[-1])
-
-        target = target.permute(0, 2, 3, 1) # [N,H,W,C]
-        target = target.view(target.shape[0], -1, target.shape[-1])
 
         l2_hint_loss_src = torch.pow((input - target), 2)
 
         if weights is None:
-            l2_hint_loss = l2_hint_loss_src.mean(dim=-1)
+            l2_hint_loss = l2_hint_loss_src.sum(dim=-1).mean()
         else:
             l2_hint_loss = l2_hint_loss_src.sum(dim=-1)*weights
             

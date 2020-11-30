@@ -789,48 +789,68 @@ class AnchorHeadTemplate(nn.Module):
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
         for feature_ in self.hint_feature_list:
-            if feature_[:len('x_conv')] == 'x_conv':
-                student_feature = student_data_dict['multi_scale_3d_features'][feature_]
-                teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
-                # student_feature_dense = student_feature.dense()
-                # teacher_feature_dense = teacher_feature.dense()
-                # print('-------------------------------------')
+            if feature_[:len('x_conv')] == 'x_conv' or feature_ == 'encoded_spconv_tensor':
+                # print("feature_:",feature_)
+                if feature_ == 'encoded_spconv_tensor':
+                    student_feature = student_data_dict[feature_]
+                    teacher_feature = teacher_data_dict[feature_]
+                else:  
+                    student_feature = student_data_dict['multi_scale_3d_features'][feature_]
+                    teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
+                student_feature_coor = student_feature.indices.long()
+                teacher_feature_coor = teacher_feature.indices.long()
+                teacher_coor_index =torch.zeros(tuple(teacher_feature_coor.max(dim=0)[0]+1),dtype=torch.long)
+                teacher_coor_index =teacher_coor_index.index_put_(tuple(teacher_feature_coor.t()), torch.arange(1,teacher_feature_coor.shape[0]+1))
+                align_index = teacher_coor_index[tuple(student_feature_coor.t())]
+                align_index -= 1
+                # align_index = torch.ones(student_feature_coor.shape[0])
+                # s_coor_index = 0
+                # t_coor_index = 0
+                # t_indices0_max = teacher_feature_coor[teacher_feature_coor[:,0]==0].shape[0]
+                # s_indices0_max = student_feature_coor[student_feature_coor[:,0]==0].shape[0]
+                # batch_gap=True
+                # while t_coor_index < teacher_feature_coor.shape[0]:
+                #     if torch.all(teacher_feature_coor[t_coor_index] == student_feature_coor[s_coor_index]):
+                #         align_index[s_coor_index] = t_coor_index
+                #         s_coor_index += 1
+                #     if s_coor_index >= student_feature_coor.shape[0]:
+                #         break
+                #     t_coor_index += 1
+                #     if s_coor_index == s_indices0_max and batch_gap:
+                #         t_coor_index = t_indices0_max
+                #         batch_gap = False
+                # align_index = align_index.long()
+                aligned_teacher_feature = teacher_feature.features[align_index]
 
-                # print(student_feature_dense.features)
-                # print(teacher_feature_dense.features)
-                # print('-------------------------------------')
+                # aligned_teacher_coor = teacher_feature_coor[align_index]
 
-                # print('-------------------------------------')
-                # print("student_feature batch_dict['multi_scale_3d_features'][src_name].features:",student_feature.features)
-                # print("student_feature cur_coords:", student_feature.indices)
-                # print('-------------------------------------')
-                # print("student_feature batch_dict['multi_scale_3d_features'][src_name].features:",teacher_feature.features)
-                # print("student_feature cur_coords:", teacher_feature.indices)
-                # print("indice_dict:",teacher_feature.indice_dict)
+                # print("\n\naligned_teacher_coor:",aligned_teacher_coor,"\nstudent_feature_coor:",student_feature_coor)
+                # for i in range(student_feature_coor.shape[0]):
+                #     print(i," - ",aligned_teacher_coor[i],"\n",student_feature_coor[i])
+                hint_loss_src = self.soft_hint_loss_func(student_feature.features,aligned_teacher_feature)
+                hint_loss = hint_loss_src.sum()
+                # print("hint_loss:",hint_loss)
             else:
                 student_feature = student_data_dict[feature_]
                 teacher_feature = teacher_data_dict[feature_]
-            
+                student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
+
+                teacher_feature = teacher_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                teacher_feature = teacher_feature.view(teacher_feature.shape[0], -1, teacher_feature.shape[-1])
+
+                batch_size = int(student_feature.shape[0])
+                if weights is not None:
+                    weights = weights.view(batch_size, -1, self.num_anchors_per_location)
+                    weights = weights.sum(dim=-1)
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
+                else:
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
+                hint_loss = hint_loss_src.sum()/batch_size
+
             # frame_id =  student_data_dict['frame_id'][0]
             # print("frame_id:",frame_id)
             # self.draw_features(teacher_feature, student_feature, frame_id)
-
-            batch_size = int(student_feature.shape[0])
-
-
-            # student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
-            # student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
-
-            # teacher_feature = teacher_feature.permute(0, 2, 3, 1) # [N,H,W,C]
-            # teacher_feature = teacher_feature.view(teacher_feature.shape[0], -1, teacher_feature.shape[-1])
-            if weights is not None:
-                weights = weights.view(batch_size, -1, self.num_anchors_per_location)
-                weights = weights.sum(dim=-1)
-                hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
-            else:
-                hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
-            hint_loss = hint_loss_src.sum()/batch_size
-            # print("hint_loss:",hint_loss)
 
 
             hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss
