@@ -110,7 +110,7 @@ class SoftmaxFocalClassificationLoss1(nn.Module):
             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
         """
         pred_softmax = F.softmax(input,dim=-1)
-        print("pred_sigmoid:",pred_softmax.shape)
+        # print("pred_sigmoid:",pred_softmax.shape)
         # print("target:",target)
         alpha_weight = target * self.alpha + (1 - target) * (1 - self.alpha)
 
@@ -155,7 +155,6 @@ class SoftmaxFocalClassificationLoss2(nn.Module):
         Returns:
             weighted_loss: (B, #anchors, #classes) float tensor after weighting.
         """
-
         target = target.argmax(dim=-1)
 
         alpha_weight = torch.where(target>0, torch.full_like(target,self.alpha, dtype=torch.float), torch.full_like(target,1-self.alpha, dtype=torch.float))

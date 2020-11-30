@@ -101,9 +101,12 @@ class AnchorHeadTemplate(nn.Module):
 
     def build_losses(self, losses_cfg):
         if self.add_bg_class:
+            cls_loss_name = 'SoftmaxFocalClassificationLoss1' if losses_cfg.get('CLS_LOSS_TYPE', None) is None \
+            else losses_cfg.CLS_LOSS_TYPE
+            cls_alpha = losses_cfg.get('CLS_LOSS_ALPHA', 0.25)
             self.add_module(
                 'cls_loss_func',
-                loss_utils.SoftmaxFocalClassificationLoss1(alpha=0.25, gamma=2.0)
+                getattr(loss_utils, cls_loss_name)(alpha=cls_alpha)
             )
         else:
             self.add_module(
