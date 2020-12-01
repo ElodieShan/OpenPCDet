@@ -799,30 +799,16 @@ class AnchorHeadTemplate(nn.Module):
                     teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
                 student_feature_coor = student_feature.indices.long()
                 teacher_feature_coor = teacher_feature.indices.long()
-                teacher_coor_index =torch.zeros(tuple(teacher_feature_coor.max(dim=0)[0]+1),dtype=torch.long)
-                teacher_coor_index =teacher_coor_index.index_put_(tuple(teacher_feature_coor.t()), torch.arange(1,teacher_feature_coor.shape[0]+1))
+                teacher_coor_index = torch.sparse_coo_tensor(teacher_feature_coor.t(), torch.arange(1,teacher_feature_coor.shape[0]+1).cuda(), torch.Size(tuple(teacher_feature_coor.max(dim=0)[0]+1)))
+                teacher_coor_index = teacher_coor_index.to_dense()
+                # teacher_coor_index =torch.zeros(tuple(teacher_feature_coor.max(dim=0)[0]+1),dtype=torch.long)
+                # teacher_coor_index =teacher_coor_index.index_put_(tuple(teacher_feature_coor.t()), torch.arange(1,teacher_feature_coor.shape[0]+1))
                 align_index = teacher_coor_index[tuple(student_feature_coor.t())]
                 align_index -= 1
-                # align_index = torch.ones(student_feature_coor.shape[0])
-                # s_coor_index = 0
-                # t_coor_index = 0
-                # t_indices0_max = teacher_feature_coor[teacher_feature_coor[:,0]==0].shape[0]
-                # s_indices0_max = student_feature_coor[student_feature_coor[:,0]==0].shape[0]
-                # batch_gap=True
-                # while t_coor_index < teacher_feature_coor.shape[0]:
-                #     if torch.all(teacher_feature_coor[t_coor_index] == student_feature_coor[s_coor_index]):
-                #         align_index[s_coor_index] = t_coor_index
-                #         s_coor_index += 1
-                #     if s_coor_index >= student_feature_coor.shape[0]:
-                #         break
-                #     t_coor_index += 1
-                #     if s_coor_index == s_indices0_max and batch_gap:
-                #         t_coor_index = t_indices0_max
-                #         batch_gap = False
-                # align_index = align_index.long()
+                
                 aligned_teacher_feature = teacher_feature.features[align_index]
 
-                # aligned_teacher_coor = teacher_feature_coor[align_index]
+                aligned_teacher_coor = teacher_feature_coor[align_index]
 
                 # print("\n\naligned_teacher_coor:",aligned_teacher_coor,"\nstudent_feature_coor:",student_feature_coor)
                 # for i in range(student_feature_coor.shape[0]):
