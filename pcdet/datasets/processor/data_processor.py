@@ -158,16 +158,19 @@ class DataProcessor(object):
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
         assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
         align_points = config.get('ALIGN_POINTS', False) # elodie : if align_points is False, extra_points will be None 
+        verticle_switch = config.get('VERTICAL_SAMPLE', 'True')
+        horizontal_switch = config.get('HORIZONTAL_SAMPLE', 'True')
+
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]
 
         if data_type == "kitti":
             if downsample_type == "TensorPro":
-                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True, return_extra_points=align_points)
+                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points)
             elif downsample_type == "TensorPro_v2":
-                points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=True, horizontal_switch=True)
+                points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch)
             elif downsample_type == "VLP16":
-                points_16lines = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=True)
+                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=verticle_switch, return_extra_points=align_points)
         if data_type == "nuscenes":
             points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
             points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])

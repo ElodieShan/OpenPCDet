@@ -39,13 +39,16 @@ def downsample_kitti_v2(points, ring, verticle_switch=True, horizontal_switch=Tr
         points = points[mask]
     return points
 
-def downsample_kitti_to_VLP16(points, ring, verticle_switch=True):
+def downsample_kitti_to_VLP16(points, ring, verticle_switch=True, return_extra_points=False):
+    extra_points = None
     if verticle_switch:
         ring_remained = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61]
         mask = np.in1d(ring,ring_remained)
+        if return_extra_points:
+            extra_points = points[~mask]
         points = points[mask] # faster
-        ring = ring[mask]
-    return points
+
+    return points, extra_points
 
 def downsample_nusc_v2(points, ring):
     # if points.shape[1]!=5:

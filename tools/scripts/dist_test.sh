@@ -5,10 +5,10 @@ NGPUS=$1
 PY_ARGS=${@:2}
 
 
-CFG_DIR=../output/kitti_models/second_16lines/SoftmaxFocalClassificationLoss2_16lines
-CFG_FILE=second_16lines_new.yaml
+CFG_DIR=../output/kitti_models/second_16lines/use_plane_batch2_lr0.0015
+CFG_FILE=second_16lines_thred5.yaml
 EPOCH=80
-TAG=softmax
+TAG=thred5
 
 CUDA_VISIBLE_DEVICES=0 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
