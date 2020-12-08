@@ -1,8 +1,10 @@
 from functools import partial
 
 import numpy as np
+import torch
 
 from ...utils import box_utils, common_utils, pointcloud_sample_utils
+from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 
 class DataProcessor(object):
     def __init__(self, processor_configs, point_cloud_range, training):
@@ -100,14 +102,19 @@ class DataProcessor(object):
             else:
                 voxels_16lines, coordinates_16lines, num_points_16lines = voxel_output_16lines
             
-            # print("coordinates_16lines:",coordinates_16lines.shape)
-            # print("coordinates_16lines:",coordinates_16lines)
             if not data_dict['use_lead_xyz']:
                 voxels_16lines = voxels_16lines[..., 3:]  # remove xyz in voxels(N, 3)
 
             data_dict['16lines']['voxels'] = voxels_16lines
             data_dict['16lines']['voxel_coords'] = coordinates_16lines
             data_dict['16lines']['voxel_num_points'] = num_points_16lines
+
+            if 'points_16lines_inbox' in data_dict['16lines']:
+                voxel_output_16lines_inbox = voxel_generator.generate(data_dict['16lines']['points_16lines_inbox'])
+                if isinstance(voxel_output_16lines, dict):
+                    data_dict['16lines']['voxel_coords_inbox'] = voxel_output_16lines_inbox['coordinates']
+                else:
+                    data_dict['16lines']['voxel_coords_inbox'] = voxel_output_16lines_inbox[1]
         # print("\n\n1---------------------\ndata_dict['points']:",data_dict['points'],"\n2---------------------data_dict['points_16lines']:",data_dict['16lines']['points_16lines'])
         # print("\n\n1---------------------\ndata_dict['voxel_coords']:",data_dict['voxel_coords'],"\n2---------------------data_dict['16lines voxel_coords']:",data_dict['16lines']['voxel_coords'])
 
@@ -146,6 +153,8 @@ class DataProcessor(object):
         data_dict['points'] = points[choice]
         return data_dict
 
+
+
     # @brief: downsample pointcloud to 16 lines - elodie
     def downsample_points_16lines(self, data_dict=None, config=None): 
         if data_dict is None:
@@ -157,7 +166,7 @@ class DataProcessor(object):
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
         assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
-        align_points = config.get('ALIGN_POINTS', False) # elodie : if align_points is False, extra_points will be None 
+        align_points_switch = config.get('ALIGN_POINTS', False)
         verticle_switch = config.get('VERTICAL_SAMPLE', 'True')
         horizontal_switch = config.get('HORIZONTAL_SAMPLE', 'True')
 
@@ -166,11 +175,11 @@ class DataProcessor(object):
 
         if data_type == "kitti":
             if downsample_type == "TensorPro":
-                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points)
+                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points_switch)
             elif downsample_type == "TensorPro_v2":
                 points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch)
             elif downsample_type == "VLP16":
-                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=verticle_switch, return_extra_points=align_points)
+                points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=verticle_switch, return_extra_points=align_points_switch)
         if data_type == "nuscenes":
             points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
             points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])
@@ -179,8 +188,14 @@ class DataProcessor(object):
         else:
             data_dict['16lines'] = {}
             data_dict['16lines']['points_16lines'] = points_16lines
-            if align_points:
+            if align_points_switch: # elodie : if align_points is False, extra_points will be None 
                 data_dict['16lines']['extra_points_16lines'] = extra_points
+            if config.get('GET_INBOX_POINTS', False): #elodie
+
+                point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+                    torch.from_numpy(points_16lines[:, 0:3]), torch.from_numpy(data_dict['gt_boxes'][:,:7])
+                ).numpy()
+                data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
         data_dict.pop('ring')
         return data_dict
 

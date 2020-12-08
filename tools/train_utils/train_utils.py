@@ -45,6 +45,8 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             batch['voxels'] = batch['16lines']['voxels']
             batch['voxel_coords'] = batch['16lines']['voxel_coords']
             batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+            if 'voxel_coords_inbox' in batch['16lines']:
+                batch['voxel_coords_inbox'] = batch['16lines']['voxel_coords_inbox']
             batch.pop('16lines')
             loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher)
         else:

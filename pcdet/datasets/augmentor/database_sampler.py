@@ -46,30 +46,6 @@ class DataBaseSampler(object):
     def __setstate__(self, d):
         self.__dict__.update(d)
 
-    # def downsample_gtpoints_16lines(self, downsample_type, points): 
-
-    #     # assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
-    #     assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
-    #     assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
-
-    #     assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] downsample_type is neither TensorPro nor VLP16!'
-
-    #     points = data_dict['points']
-    #     data_type = data_dict["metadata"]["data_type"]
-
-    #     if data_type == "kitti":
-    #         if downsample_type == "TensorPro":
-    #             points_16lines = pointcloud_sample_utils.downsample_kitti(points, points[:,-1], verticle_switch=True, horizontal_switch=True)
-    #         elif downsample_type == "TensorPro_v2":
-    #             points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, points[:,-1], verticle_switch=True, horizontal_switch=True)
-    #         elif downsample_type == "VLP16":
-    #             points_16lines = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, points[:,-1], verticle_switch=True)
-    #     if data_type == "nuscenes":
-    #         points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, points[:,-1])
-    #         points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, points[:,-1])
-
-    #     return points_16lines.shape[0]
-
     def filter_by_difficulty(self, db_infos, removed_difficulty):
         new_db_infos = {}
         for key, dinfos in db_infos.items():
@@ -177,6 +153,8 @@ class DataBaseSampler(object):
         data_dict['gt_boxes'] = gt_boxes
         data_dict['gt_names'] = gt_names
         data_dict['points'] = points
+
+
         return data_dict
 
     def __call__(self, data_dict):

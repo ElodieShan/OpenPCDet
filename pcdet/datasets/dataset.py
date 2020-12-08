@@ -183,7 +183,7 @@ class DatasetTemplate(torch_data.Dataset):
                         if key_16lines in ['voxels', 'voxel_num_points']:
                             ret['16lines'][key_16lines] = np.concatenate(val_16lines, axis=0)
 
-                        elif key_16lines in ['points_16lines', 'voxel_coords']:
+                        elif key_16lines in ['points_16lines', 'voxel_coords', 'voxel_coords_inbox']:
                             # print("key_16lines in ['points', 'voxel_coords'] start",key_16lines)
                             # print(key_16lines, "ori val_16lines:",val_16lines)
                             coors = []

@@ -192,6 +192,8 @@ class AnchorHeadTemplate(nn.Module):
             )
             self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
             self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
+            self.hint_gt_only = soft_losses_cfg.HINT_LOSS.get('GT_ONLY', False)
+            self.random_select_bg = soft_losses_cfg.HINT_LOSS.get('RANDOM_SELECT_BG', False)
             self.hint_soft_loss_source = soft_losses_cfg.HINT_LOSS.get('SOURCE', None)
             self.hint_soft_loss_source_weights = soft_losses_cfg.HINT_LOSS.get('SOURCE_WEIGHTS', None)
             if self.hint_soft_loss_source_weights is None and self.hint_soft_loss_source is not None:
@@ -788,7 +790,8 @@ class AnchorHeadTemplate(nn.Module):
                     weights += src_weights*self.soft_loss_weights['weights_sf']
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
-        for feature_ in self.hint_feature_list:
+            
+        for i, feature_ in enumerate(self.hint_feature_list):
             if feature_[:len('x_conv')] == 'x_conv' or feature_ == 'encoded_spconv_tensor':
                 # print("feature_:",feature_)
                 if feature_ == 'encoded_spconv_tensor':
@@ -797,24 +800,61 @@ class AnchorHeadTemplate(nn.Module):
                 else:  
                     student_feature = student_data_dict['multi_scale_3d_features'][feature_]
                     teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
-                student_feature_coor = student_feature.indices.long()
-                teacher_feature_coor = teacher_feature.indices.long()
-                teacher_coor_index = torch.sparse_coo_tensor(teacher_feature_coor.t(), torch.arange(1,teacher_feature_coor.shape[0]+1).cuda(), torch.Size(tuple(teacher_feature_coor.max(dim=0)[0]+1)))
-                teacher_coor_index = teacher_coor_index.to_dense()
-                # teacher_coor_index =torch.zeros(tuple(teacher_feature_coor.max(dim=0)[0]+1),dtype=torch.long)
-                # teacher_coor_index =teacher_coor_index.index_put_(tuple(teacher_feature_coor.t()), torch.arange(1,teacher_feature_coor.shape[0]+1))
-                align_index = teacher_coor_index[tuple(student_feature_coor.t())]
-                align_index -= 1
-                
-                aligned_teacher_feature = teacher_feature.features[align_index]
+                if self.hint_gt_only:
+                    assert 'voxel_coords_inbox_dict' in student_data_dict, 'voxel_coords_inbox_dict not in student_data_dict!'
+                    student_feature_coor = student_feature.indices.long()
+                    teacher_feature_coor = teacher_feature.indices.long()
+                    gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
 
-                aligned_teacher_coor = teacher_feature_coor[align_index]
+                    student_gt_coor_unique = torch.cat((student_feature_coor,gt_feature_coor),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0)
+                    # s_gt_inverse = student_gt_coor_unique[1][:student_feature_coor.shape[0]]
+                    s_gt_inverse = student_gt_coor_unique[1][:student_feature_coor.shape[0]]
+                    s_gt_sorted, s_gt_indices = torch.sort(s_gt_inverse)
+                    s_gt_coor_indices = torch.zeros(student_gt_coor_unique[2].shape[0], dtype=torch.long).cuda()
+                    s_gt_coor_indices[s_gt_sorted] = s_gt_indices
+                    student_gt_mask = student_gt_coor_unique[2]==2
+                    student_gt_coor_index = s_gt_coor_indices[torch.arange(0,student_gt_coor_unique[2].shape[0])[student_gt_mask]]
+                    if self.random_select_bg:
+                        rand_mask = torch.rand(student_feature_coor.shape[0])
+                        rand_mask[student_gt_coor_index] = 0
+                        mask =  torch.where(rand_mask>0.5,\
+                                torch.full_like(rand_mask,1), torch.full_like(rand_mask,0))
+                        student_gt_coor_bg = student_feature_coor[mask.bool()] 
+                        student_gt_coor_bg = student_gt_coor_bg if student_gt_coor_bg.shape[0]<student_gt_coor_index.shape[0] else student_gt_coor_bg[:student_gt_coor_index.shape[0]]
+                        student_gt_coor_index_bg = torch.arange(0,student_feature_coor.shape[0])[mask.bool()].cuda()
+                        student_gt_coor_index_bg = student_gt_coor_index_bg if student_gt_coor_index_bg.shape[0]<student_gt_coor_index.shape[0] else student_gt_coor_index_bg[:student_gt_coor_index.shape[0]]
+                        student_gt_coor_index = torch.cat((student_gt_coor_index,student_gt_coor_index_bg),0)
+                    
+                    student_gt_coor = student_feature_coor[student_gt_coor_index]
+                    
+                    st_gt_coor_unique = torch.cat((teacher_feature_coor,student_gt_coor),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0)# get the gt coordinates in teacher models 
+                    st_gt_inverse = st_gt_coor_unique[1][:teacher_feature_coor.shape[0]]
+                    st_gt_sorted, st_gt_indices = torch.sort(st_gt_inverse)
+                    st_gt_coor_indices = torch.zeros(st_gt_coor_unique[2].shape[0], dtype=torch.long).cuda()
+                    st_gt_coor_indices[st_gt_sorted] = st_gt_indices
+                    st_gt_mask = st_gt_coor_unique[2]==2
+                    st_gt_coor_index = st_gt_coor_indices[torch.arange(0,st_gt_coor_unique[2].shape[0])[st_gt_mask]]
 
-                # print("\n\naligned_teacher_coor:",aligned_teacher_coor,"\nstudent_feature_coor:",student_feature_coor)
-                # for i in range(student_feature_coor.shape[0]):
-                #     print(i," - ",aligned_teacher_coor[i],"\n",student_feature_coor[i])
-                hint_loss_src = self.soft_hint_loss_func(student_feature.features,aligned_teacher_feature)
-                hint_loss = hint_loss_src.sum()
+                    hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_gt_coor_index], teacher_feature.features[st_gt_coor_index])
+                else:
+                    student_feature_coor = student_feature.indices.long()
+                    teacher_feature_coor = teacher_feature.indices.long()
+                    teacher_coor_index = torch.sparse_coo_tensor(teacher_feature_coor.t(), torch.arange(1,teacher_feature_coor.shape[0]+1).cuda(), torch.Size(tuple(teacher_feature_coor.max(dim=0)[0]+1)))
+                    teacher_coor_index = teacher_coor_index.to_dense()
+                    # teacher_coor_index =torch.zeros(tuple(teacher_feature_coor.max(dim=0)[0]+1),dtype=torch.long)
+                    # teacher_coor_index =teacher_coor_index.index_put_(tuple(teacher_feature_coor.t()), torch.arange(1,teacher_feature_coor.shape[0]+1))
+                    align_index = teacher_coor_index[tuple(student_feature_coor.t())]
+                    align_index -= 1
+                    
+                    aligned_teacher_feature = teacher_feature.features[align_index]
+
+                    aligned_teacher_coor = teacher_feature_coor[align_index]
+
+                    # print("\n\naligned_teacher_coor:",aligned_teacher_coor,"\nstudent_feature_coor:",student_feature_coor)
+                    # for i in range(student_feature_coor.shape[0]):
+                    #     print(i," - ",aligned_teacher_coor[i],"\n",student_feature_coor[i])
+                    hint_loss_src = self.soft_hint_loss_func(student_feature.features,aligned_teacher_feature)
+                hint_loss_src = hint_loss_src.sum()
                 # print("hint_loss:",hint_loss)
             else:
                 student_feature = student_data_dict[feature_]
@@ -832,15 +872,15 @@ class AnchorHeadTemplate(nn.Module):
                     hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
                 else:
                     hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
-                hint_loss = hint_loss_src.sum()/batch_size
+                hint_loss_src = hint_loss_src.sum()/batch_size
 
             # frame_id =  student_data_dict['frame_id'][0]
             # print("frame_id:",frame_id)
             # self.draw_features(teacher_feature, student_feature, frame_id)
 
 
-            hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss
-        
+            hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss_src
+
         tb_dict = {
             'hint_loss': hint_loss.item()
         }

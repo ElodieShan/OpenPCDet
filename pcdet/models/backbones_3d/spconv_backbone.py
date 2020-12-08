@@ -2,7 +2,7 @@ from functools import partial
 
 import spconv
 import torch.nn as nn
-
+import torch
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
                    conv_type='subm', norm_fn=None):
@@ -142,7 +142,30 @@ class VoxelBackBone8x(nn.Module):
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
+        # print("x_conv4:",x_conv4)
+        # print("indices:",x_conv4.indices)
+        # print("indice_dict:",x_conv4.indice_dict['x_conv4']) # (outids, indices, indice_pairs, indice_pair_num, spatial_shape)
+        # for key, values in x_conv4.indice_dict.items():
+        #     print("key:",key)
+        #     print("outids:",x_conv4.indice_dict[key][0].shape)
+        #     print("indices:",x_conv4.indice_dict[key][1].shape)
+        #     print("indices:",x_conv4.indice_dict[key][1])
+        #     print("indice_pair_num:",x_conv4.indice_dict[key][3])
+        #     print("spatial_shape:",x_conv4.indice_dict[key][4])
 
+        #     print("indice_pairs:",x_conv4.indice_dict[key][2].shape)
+        #     print("indice_pairs max:",x_conv4.indice_dict[key][2].max())
+        #     print("indice_pairs 13 sort:",torch.sort(x_conv4.indice_dict[key][2][13][0]))
+
+        #     for i in range(x_conv4.indice_dict[key][2].shape[0]):
+        #         print("out: ", i,' - ',x_conv4.indice_dict[key][2][i,1,0], ' - ' ,x_conv4.indice_dict[key][0][x_conv4.indice_dict[key][2][i,1,0]] )
+        #         print("in: ", i,' - ',x_conv4.indice_dict[key][2][i,0,0], ' - ' ,x_conv4.indice_dict[key][1][x_conv4.indice_dict[key][2][i,0,0]] )
+
+            # for i in range(x_conv4.indice_dict[key][2].shape[0]):
+            #     print()
+            #     print("all:",i,'  -  ',x_conv4.indice_dict[key][2][i,:,:3])
+            #     if x_conv4.indice_dict[key][2][i,0,0] > 0:
+            #     print(i,' - ',x_conv4.indice_dict[key][2][i,0,0], ' - ' ,x_conv4.indice_dict[key][0][x_conv4.indice_dict[key][2][i,0,0]] )
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
         out = self.conv_out(x_conv4)
@@ -159,6 +182,27 @@ class VoxelBackBone8x(nn.Module):
                 'x_conv4': x_conv4,
             }
         })
+
+        if 'voxel_coords_inbox' in batch_dict:
+            expand_index = torch.LongTensor([
+                [0, 1, 1, 1], [0, 1, 1, 0], [0, 1, 1, -1], [0, 1, 0, 1], [0, 1, 0, 0], [0, 1, 0, -1], [0, 1, -1, 1], [0, 1, -1, 0], [0, 1, -1, -1],
+                [0, 0, 1, 1], [0, 0, 1, 0], [0, 0, 1, -1], [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, -1], [0, 0, -1, 1], [0, 0, -1, 0], [0, 0, -1, -1],
+                [0, -1, 1, 1], [0, -1, 1, 0], [0, -1, 1, -1], [0, -1, 0, 1], [0, -1, 0, 0], [0, -1, 0, -1], [0, -1, -1, 1], [0, -1, -1, 0], [0, -1, -1, -1],
+            ]).cuda() # HxWxL
+            x_conv1_coor_inbox = batch_dict['voxel_coords_inbox'].long()
+            x_conv2_coor_inbox = (x_conv1_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv1_coor_inbox.shape[0]))//2
+            x_conv2_coor_inbox = x_conv2_coor_inbox.view(-1,4).unique(dim=0)
+            x_conv3_coor_inbox = (x_conv2_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv2_coor_inbox.shape[0]))//2
+            x_conv3_coor_inbox = x_conv3_coor_inbox.view(-1,4).unique(dim=0)
+            x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
+            x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
+            batch_dict['voxel_coords_inbox_dict'] = {
+                'x_conv1': x_conv1_coor_inbox,
+                'x_conv2': x_conv2_coor_inbox,
+                'x_conv3': x_conv3_coor_inbox,
+                'x_conv4': x_conv4_coor_inbox,
+            }
+            batch_dict.pop('voxel_coords_inbox')
 
         return batch_dict
 

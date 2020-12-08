@@ -56,12 +56,15 @@ DATA_PROCESSOR:
       REMOVE_OUTSIDE_BOXES: True
       
     - NAME: downsample_points_16lines
+      ALIGN_POINTS: True
       REPLACE_ORI_POINTS: {
         'train': False,
         'test': True
       }
+      GET_INBOX_POINTS: True
 
     - NAME: shuffle_points
+      ALIGN_POINTS: True
       SHUFFLE_ENABLED: {
         'train': True,
         'test': False
