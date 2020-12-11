@@ -6,7 +6,12 @@ class SECONDNet(Detector3DTemplate):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_list = self.build_networks()
 
-    def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None):
+    def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, batch_dict_sub=None):
+        if batch_dict_sub is not None:
+            for cur_module in self.module_list[:2]:
+                batch_dict_sub = cur_module(batch_dict_sub)
+        
+        batch_dict['sub_multi_scale_3d_features'] =  batch_dict_sub['multi_scale_3d_features']
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)
 

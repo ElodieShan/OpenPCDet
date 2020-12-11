@@ -8,9 +8,13 @@ PY_ARGS=${@:2}
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 --nproc_per_node=2 train.py --launcher pytorch \
---cfg_file cfgs/kitti_models/second_16lines_vlp.yaml \
---extra_tag second_16lines_vlp-shuffle \
---ckpt_save_interval 2
+--cfg_file cfgs/kitti_models/second2.yaml \
+--extra_tag second_sub \
+--ckpt_save_interval 2 \
+--use_sub_data
+
+
+
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 # --nproc_per_node=2 train.py --launcher pytorch \

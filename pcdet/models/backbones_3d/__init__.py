@@ -1,5 +1,5 @@
 from .pointnet2_backbone import PointNet2Backbone, PointNet2MSG
-from .spconv_backbone import VoxelBackBone8x, VoxelResBackBone8x, VoxelBackBone8x_v2, VoxelBackBone8x_v3
+from .spconv_backbone import VoxelBackBone8x, VoxelResBackBone8x, VoxelBackBone8x_v2, VoxelBackBone8x_v3, VoxelResBackBone8x_sub
 from .spconv_unet import UNetV2
 
 __all__ = {
@@ -10,4 +10,5 @@ __all__ = {
     'PointNet2Backbone': PointNet2Backbone,
     'PointNet2MSG': PointNet2MSG,
     'VoxelResBackBone8x': VoxelResBackBone8x,
+    'VoxelResBackBone8x_sub': VoxelResBackBone8x_sub,
 }

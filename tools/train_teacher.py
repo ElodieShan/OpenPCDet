@@ -4,6 +4,7 @@ import glob
 import os
 from pathlib import Path
 from test import repeat_eval_ckpt
+import copy
 
 import torch
 import torch.distributed as dist
@@ -17,6 +18,10 @@ from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
 
+from pathlib import Path
+import yaml
+from easydict import EasyDict
+import torch.distributed as dist
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -34,7 +39,7 @@ def parse_config():
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-    parser.add_argument('--max_ckpt_save_num', type=int, default=40, help='max number of saved checkpoint')
+    parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
@@ -43,22 +48,46 @@ def parse_config():
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
-    parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
-
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
     cfg.TAG = Path(args.cfg_file).stem
     cfg.EXP_GROUP_PATH = '/'.join(args.cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
-
+    
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs, cfg)
 
-    return args, cfg
+    if args.teacher_cfg_file is not None:
+        cfg_teacher = EasyDict()
+        cfg_teacher.ROOT_DIR = (Path(__file__).resolve().parent / '../').resolve()
+        cfg_teacher.LOCAL_RANK = 0
+        cfg_from_yaml_file(args.teacher_cfg_file, cfg_teacher)
+        cfg_teacher.TAG = Path(args.teacher_cfg_file).stem
+        cfg_teacher.EXP_GROUP_PATH = '/'.join(args.teacher_cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
+        if args.set_cfgs is not None:
+            cfg_from_list(args.set_cfgs, cfg_teacher)
+        return args, cfg, cfg_teacher
+        print("cfg_teacher:",cfg_teacher)
+    return args, cfg, None
 
+def build_sub_model(args, cfg, data_set):
+    data_set_sub = copy.deepcopy(data_set)
+    cfg_sub = copy.deepcopy(cfg)
+    # ckpt_path = "/home/elodie/OpenPCDet/output/kitti_models/pv_rcnn_without_planes/default/ckpt/checkpoint_epoch_80.pth"
+    model_sub = build_network(model_cfg=cfg_sub.MODEL, num_class=len(cfg_sub.CLASS_NAMES), dataset=data_set_sub)
+    if args.sync_bn:
+        model_sub = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model_sub)
+
+    # for param in model_sub.parameters():
+    #     param.requires_grad = False
+    model_sub.eval()
+
+    model_sub.cuda() # load model to GPU
+    model_sub = nn.parallel.DistributedDataParallel(model_sub, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+    return model_sub
 
 def main():
-    args, cfg = parse_config()
+    args, cfg, cfg_teacher = parse_config()
     if args.launcher == 'none':
         dist_train = False
         total_gpus = 1
@@ -66,7 +95,10 @@ def main():
         total_gpus, cfg.LOCAL_RANK = getattr(common_utils, 'init_dist_%s' % args.launcher)(
             args.tcp_port, args.local_rank, backend='nccl'
         )
+        if cfg_teacher is not None:
+            cfg_teacher.LOCAL_RANK = dist.get_rank()
         dist_train = True
+
 
     if args.batch_size is None:
         args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
@@ -113,6 +145,8 @@ def main():
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs
     )
+    # build sub model elodie
+    model_sub = build_sub_model(args, cfg, train_set)
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
@@ -140,6 +174,8 @@ def main():
             last_epoch = start_epoch + 1
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
+    print("student device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()]:",[cfg.LOCAL_RANK % torch.cuda.device_count()])
+
     if dist_train:
         model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     logger.info(model)
@@ -148,15 +184,16 @@ def main():
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
-    print("args.use_sub_data:",args.use_sub_data)
+
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
+
     train_model(
         model,
         optimizer,
         train_loader,
-        use_sub_data = args.use_sub_data,
+        use_sub_data=True,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,

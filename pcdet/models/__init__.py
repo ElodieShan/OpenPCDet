@@ -25,7 +25,7 @@ def load_data_to_gpu(batch_dict):
 def model_fn_decorator():
     ModelReturn = namedtuple('ModelReturn', ['loss', 'tb_dict', 'disp_dict'])
 
-    def model_func(model, batch_dict, batch_dict_teacher=None, model_teacher=None): #elodie
+    def model_func(model, batch_dict, batch_dict_teacher=None, model_teacher=None, batch_dict_sub=None): #elodie
         import copy
         load_data_to_gpu(batch_dict)
 
@@ -34,6 +34,9 @@ def model_fn_decorator():
             with torch.no_grad():
                 teacher_ret_dict, teacher_data_dict = model_teacher(batch_dict_teacher, is_teacher=True)
             ret_dict, tb_dict, disp_dict = model(batch_dict, teacher_ret_dict=teacher_ret_dict, teacher_data_dict=teacher_data_dict)
+        elif batch_dict_sub is not None:
+            load_data_to_gpu(batch_dict_sub)
+            ret_dict, tb_dict, disp_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)
         else:
             ret_dict, tb_dict, disp_dict = model(batch_dict)
 
