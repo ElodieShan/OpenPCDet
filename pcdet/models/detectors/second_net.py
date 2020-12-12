@@ -11,7 +11,7 @@ class SECONDNet(Detector3DTemplate):
             for cur_module in self.module_list[:2]:
                 batch_dict_sub = cur_module(batch_dict_sub)
         
-        batch_dict['sub_multi_scale_3d_features'] =  batch_dict_sub['multi_scale_3d_features']
+            batch_dict['sub_multi_scale_3d_features'] =  batch_dict_sub['multi_scale_3d_features']
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)
 

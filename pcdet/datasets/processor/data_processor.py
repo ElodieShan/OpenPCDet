@@ -77,7 +77,6 @@ class DataProcessor(object):
             self.grid_size = np.round(grid_size).astype(np.int64)
             self.voxel_size = config.VOXEL_SIZE
             return partial(self.transform_points_to_voxels, voxel_generator=voxel_generator)
-
         points = data_dict['points']
         voxel_output = voxel_generator.generate(points)
         if isinstance(voxel_output, dict):
@@ -159,10 +158,12 @@ class DataProcessor(object):
     def downsample_points_16lines(self, data_dict=None, config=None): 
         if data_dict is None:
             return partial(self.downsample_points_16lines, config=config)
-
         # assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
         assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
         assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
+        if config.DOWNSAMPLE_POINTS[self.mode] is not True:
+            data_dict.pop('ring')
+            return data_dict
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
         assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'

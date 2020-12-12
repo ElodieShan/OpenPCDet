@@ -42,6 +42,8 @@ def parse_config():
 
     parser.add_argument('--save_iou', action='store_true', default=False, help='')
 
+    parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
+
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
@@ -60,11 +62,11 @@ def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id
     # load checkpoint
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
     model.cuda()
-
+    print("use_sub_data:",args.use_sub_data)
     # start evaluation
     eval_utils.eval_one_epoch(
         cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
-        result_dir=eval_output_dir, save_to_file=args.save_to_file, save_iou=save_iou
+        result_dir=eval_output_dir, save_to_file=args.save_to_file, save_iou=save_iou, use_sub_data=args.use_sub_data
     )
 
 
@@ -122,7 +124,7 @@ def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir
         tb_dict = eval_utils.eval_one_epoch(
             cfg, model, test_loader, cur_epoch_id, logger, dist_test=dist_test,
             result_dir=cur_result_dir, save_to_file=args.save_to_file,
-            save_iou=save_iou
+            save_iou=save_iou, use_sub_data=args.use_sub_data
         ) # elodie
 
         if cfg.LOCAL_RANK == 0:

@@ -57,6 +57,10 @@ DATA_PROCESSOR:
       
     - NAME: downsample_points_16lines
       ALIGN_POINTS: True
+      DOWNSAMPLE_POINTS: {
+        'train': True,
+        'test': True
+      }
       REPLACE_ORI_POINTS: {
         'train': False,
         'test': True

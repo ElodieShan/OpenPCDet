@@ -19,7 +19,7 @@ def statistics_info(cfg, ret_dict, metric, disp_dict):
         '(%d, %d) / %d' % (metric['recall_roi_%s' % str(min_thresh)], metric['recall_rcnn_%s' % str(min_thresh)], metric['gt_num'])
 
 
-def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, save_iou=False):
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, save_iou=False, use_sub_data=False):
     result_dir.mkdir(parents=True, exist_ok=True)
 
     final_output_dir = result_dir / 'final_result' / 'data'
@@ -52,9 +52,23 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
-        load_data_to_gpu(batch_dict)
-        with torch.no_grad():
-            pred_dicts, ret_dict = model(batch_dict)
+        if use_sub_data and "16lines" in batch_dict:
+            import copy            
+            batch_dict_sub = copy.deepcopy(batch_dict)
+            batch_dict_sub['points'] = batch_dict_sub['16lines']['points_16lines']
+            batch_dict_sub['voxels'] = batch_dict_sub['16lines']['voxels']
+            batch_dict_sub['voxel_coords'] = batch_dict_sub['16lines']['voxel_coords']
+            batch_dict_sub['voxel_num_points'] = batch_dict_sub['16lines']['voxel_num_points']
+            batch_dict_sub.pop('16lines')
+            batch_dict.pop('16lines')
+            load_data_to_gpu(batch_dict_sub)
+            load_data_to_gpu(batch_dict)
+            with torch.no_grad():
+                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)
+        else:
+            load_data_to_gpu(batch_dict)
+            with torch.no_grad():
+                pred_dicts, ret_dict = model(batch_dict)
         disp_dict = {}
 
         statistics_info(cfg, ret_dict, metric, disp_dict)
