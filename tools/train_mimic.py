@@ -50,6 +50,8 @@ def parse_config():
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
+    parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
+
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)

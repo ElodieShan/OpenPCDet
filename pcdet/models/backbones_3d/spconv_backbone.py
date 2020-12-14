@@ -357,6 +357,27 @@ class VoxelResBackBone8x(nn.Module):
             }
         })
 
+        if 'voxel_coords_inbox' in batch_dict:
+            expand_index = torch.LongTensor([
+                [0, 1, 1, 1], [0, 1, 1, 0], [0, 1, 1, -1], [0, 1, 0, 1], [0, 1, 0, 0], [0, 1, 0, -1], [0, 1, -1, 1], [0, 1, -1, 0], [0, 1, -1, -1],
+                [0, 0, 1, 1], [0, 0, 1, 0], [0, 0, 1, -1], [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, -1], [0, 0, -1, 1], [0, 0, -1, 0], [0, 0, -1, -1],
+                [0, -1, 1, 1], [0, -1, 1, 0], [0, -1, 1, -1], [0, -1, 0, 1], [0, -1, 0, 0], [0, -1, 0, -1], [0, -1, -1, 1], [0, -1, -1, 0], [0, -1, -1, -1],
+            ]).cuda() # HxWxL
+            x_conv1_coor_inbox = batch_dict['voxel_coords_inbox'].long()
+            x_conv2_coor_inbox = (x_conv1_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv1_coor_inbox.shape[0]))//2
+            x_conv2_coor_inbox = x_conv2_coor_inbox.view(-1,4).unique(dim=0)
+            x_conv3_coor_inbox = (x_conv2_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv2_coor_inbox.shape[0]))//2
+            x_conv3_coor_inbox = x_conv3_coor_inbox.view(-1,4).unique(dim=0)
+            x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
+            x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
+            batch_dict['voxel_coords_inbox_dict'] = {
+                'x_conv1': x_conv1_coor_inbox,
+                'x_conv2': x_conv2_coor_inbox,
+                'x_conv3': x_conv3_coor_inbox,
+                'x_conv4': x_conv4_coor_inbox,
+            }
+            batch_dict.pop('voxel_coords_inbox')
+            
         return batch_dict
 
 class VoxelResBackBone8x_sub(nn.Module):
@@ -492,6 +513,7 @@ class VoxelBackBone8x_v2(nn.Module):
             # [1600, 1408, 41] <- [800, 704, 21]
             block(16, 32, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv2', conv_type='spconv'),
             block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
+            # block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
             block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='spconv222', conv_type='spconv'), # elodie subm -> spconv
         )
 
@@ -499,14 +521,14 @@ class VoxelBackBone8x_v2(nn.Module):
             # [800, 704, 21] <- [400, 352, 11]
             block(32, 64, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv3', conv_type='spconv'),
             block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'),
-            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'), # elodie subm -> spconv
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'), 
         )
 
         self.conv4 = spconv.SparseSequential(
             # [400, 352, 11] <- [200, 176, 5]
             block(64, 64, 3, norm_fn=norm_fn, stride=2, padding=(0, 1, 1), indice_key='spconv4', conv_type='spconv'),
             block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'),
-            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'), # elodie subm -> spconv
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'), 
         )
 
         last_pad = 0
@@ -563,6 +585,35 @@ class VoxelBackBone8x_v2(nn.Module):
                 'x_conv4': x_conv4,
             }
         })
+
+        if 'voxel_coords_inbox' in batch_dict:
+            expand_index = torch.LongTensor([
+                [0, 1, 1, 1], [0, 1, 1, 0], [0, 1, 1, -1], [0, 1, 0, 1], [0, 1, 0, 0], [0, 1, 0, -1], [0, 1, -1, 1], [0, 1, -1, 0], [0, 1, -1, -1],
+                [0, 0, 1, 1], [0, 0, 1, 0], [0, 0, 1, -1], [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, -1], [0, 0, -1, 1], [0, 0, -1, 0], [0, 0, -1, -1],
+                [0, -1, 1, 1], [0, -1, 1, 0], [0, -1, 1, -1], [0, -1, 0, 1], [0, -1, 0, 0], [0, -1, 0, -1], [0, -1, -1, 1], [0, -1, -1, 0], [0, -1, -1, -1],
+            ]).cuda() # HxWxL
+            x_conv1_coor_inbox = batch_dict['voxel_coords_inbox'].long()
+            x_conv1_coor_inbox = (x_conv1_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv1_coor_inbox.shape[0])).view(-1,4).unique(dim=0)
+            
+            x_conv2_coor_inbox = (x_conv1_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv1_coor_inbox.shape[0])).view(-1,4).unique(dim=0)
+            x_conv2_coor_inbox = (x_conv2_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv2_coor_inbox.shape[0]))//2
+            x_conv2_coor_inbox = x_conv2_coor_inbox.view(-1,4).unique(dim=0)
+            # x_conv2_coor_inbox = (x_conv1_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv1_coor_inbox.shape[0]))//2
+            # x_conv2_coor_inbox = x_conv2_coor_inbox.view(-1,4).unique(dim=0)
+
+            x_conv3_coor_inbox = (x_conv2_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv2_coor_inbox.shape[0]))//2
+            x_conv3_coor_inbox = x_conv3_coor_inbox.view(-1,4).unique(dim=0)
+
+            x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
+            x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
+            
+            batch_dict['voxel_coords_inbox_dict'] = {
+                'x_conv1': x_conv1_coor_inbox,
+                'x_conv2': x_conv2_coor_inbox,
+                'x_conv3': x_conv3_coor_inbox,
+                'x_conv4': x_conv4_coor_inbox,
+            }
+            batch_dict.pop('voxel_coords_inbox')
 
         return batch_dict
 

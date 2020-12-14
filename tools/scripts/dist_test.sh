@@ -5,10 +5,10 @@ NGPUS=$1
 PY_ARGS=${@:2}
 
 
-CFG_DIR=../output/kitti_models/second2/second_sub
-CFG_FILE=second2.yaml
-EPOCH=80
-TAG=test_on_64lines3
+CFG_DIR=../output/kitti_models/tsubv1_second_mimic/teachersubv1-ResBB-respretrained_klv2_20_gt10_sfp40_onlyt-2
+CFG_FILE=second_mimic_KL_2.yaml
+EPOCH=40
+TAG=test_on_16lines
 
 CUDA_VISIBLE_DEVICES=0 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
