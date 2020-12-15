@@ -9,6 +9,21 @@ from .target_assigner.atss_target_assigner import ATSSTargetAssigner
 from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
 import matplotlib.pyplot as plt
 
+class SparseMaxPoolTestTorch(nn.Module):
+    def __init__(self, num_layers, ndim, shape, kernel_size,
+                 stride, padding, dilation):
+        super().__init__()
+
+        self.net = spconv.SparseSequential(
+            spconv.SparseMaxPool3d(kernel_size, stride, padding, dilation)
+        )
+        self.shape = shape
+
+    def forward(self, features, coors, batch_size):
+        coors = coors.int()
+        x = spconv.SparseConvTensor(features, coors, self.shape, batch_size )
+        return self.net(x)# .dense()
+
 class AnchorHeadTemplate(nn.Module):
     def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training, cls_score_thred=None):
         super().__init__()

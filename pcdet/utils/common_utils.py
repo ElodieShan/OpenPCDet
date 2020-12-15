@@ -80,7 +80,6 @@ def get_voxel_centers(voxel_coords, downsample_times, voxel_size, point_cloud_ra
     voxel_centers = (voxel_centers + 0.5) * voxel_size + pc_range
     return voxel_centers
 
-
 def create_logger(log_file=None, rank=0, log_level=logging.INFO):
     logger = logging.getLogger(__name__)
     logger.setLevel(log_level if rank == 0 else 'ERROR')
