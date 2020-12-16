@@ -175,9 +175,7 @@ class VoxelSetAbstraction(nn.Module):
 
         """
         keypoints = self.get_sampled_points(batch_dict)
-        print("keypoints:",keypoints.shape)
 
-        print("keypoints:",keypoints)
         point_features_list = []
         if 'bev' in self.model_cfg.FEATURES_SOURCE:
             point_bev_features = self.interpolate_from_bev_features(
@@ -188,11 +186,8 @@ class VoxelSetAbstraction(nn.Module):
 
         batch_size, num_keypoints, _ = keypoints.shape
         new_xyz = keypoints.view(-1, 3)
-        print("new_xyz:",new_xyz.shape)
 
-        print("new_xyz:",new_xyz)
         new_xyz_batch_cnt = new_xyz.new_zeros(batch_size).int().fill_(num_keypoints)
-        print("new_xyz_batch_cnt:",new_xyz_batch_cnt)
 
         if 'raw_points' in self.model_cfg.FEATURES_SOURCE:
             raw_points = batch_dict['points']
@@ -230,11 +225,6 @@ class VoxelSetAbstraction(nn.Module):
                 new_xyz_batch_cnt=new_xyz_batch_cnt,
                 features=batch_dict['multi_scale_3d_features'][src_name].features.contiguous(),
             )
-            print("pooled_points:",pooled_points.shape)
-            print("pooled_points:",pooled_points)
-            print("pooled_points==xyz:",pooled_points==new_xyz)
-            print("pooled_features:",pooled_features.shape)
-            print("batch_dict['multi_scale_3d_features'][src_name].features:",batch_dict['multi_scale_3d_features'][src_name].features.shape)
 
             point_features_list.append(pooled_features.view(batch_size, num_keypoints, -1))
 

@@ -49,7 +49,14 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             if 'voxel_coords_inbox' in batch['16lines']:
                 batch['voxel_coords_inbox'] = batch['16lines']['voxel_coords_inbox']
             batch.pop('16lines')
-            loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher)
+            if use_sub_data:
+                batch_dict_sub = copy.deepcopy(batch)
+                batch_dict_sub.pop('points')
+                if 'voxel_coords_inbox' in batch_dict_sub:
+                    batch_dict_sub.pop('voxel_coords_inbox')
+                loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher, batch_dict_sub=batch_dict_sub)
+            else:
+                loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher)
         else:
             batch_dict_sub = None
             if "16lines" in batch: # dangerous

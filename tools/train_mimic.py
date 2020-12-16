@@ -211,6 +211,7 @@ def main():
         optimizer,
         train_loader,
         model_teacher=model_teacher,
+        use_sub_data = args.use_sub_data,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,
