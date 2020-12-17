@@ -279,7 +279,7 @@ class StackSAModuleMSGAdapt(nn.Module):
 
         return new_xyz, new_features
 
-class StackSAModuleMSGTeacher(nn.Module):
+class StackMAXPOOLModuleMSG(nn.Module):
     def __init__(self, *, radii: List[float], nsamples: List[int], mlps: List[List[int]],
                  use_xyz: bool = True, pool_method='max_pool'):
         """
@@ -304,14 +304,6 @@ class StackSAModuleMSGTeacher(nn.Module):
             if use_xyz:
                 mlp_spec[0] += 3
 
-            shared_mlps = []
-            for k in range(len(mlp_spec) - 1):
-                shared_mlps.extend([
-                    nn.Conv2d(mlp_spec[k], mlp_spec[k + 1], kernel_size=1, bias=False),
-                    nn.BatchNorm2d(mlp_spec[k + 1]),
-                    nn.ReLU()
-                ])
-            self.mlps.append(nn.Sequential(*shared_mlps))
         self.pool_method = pool_method
 
         self.init_weights()
@@ -343,7 +335,6 @@ class StackSAModuleMSGTeacher(nn.Module):
                 xyz, xyz_batch_cnt, new_xyz, new_xyz_batch_cnt, features
             )  # (M1 + M2, C, nsample)
             new_features = new_features.permute(1, 0, 2).unsqueeze(dim=0)  # (1, C, M1 + M2 ..., nsample)
-            new_features = self.mlps[k](new_features)  # (1, C, M1 + M2 ..., nsample)
 
             if self.pool_method == 'max_pool':
                 new_features = F.max_pool2d(
@@ -357,6 +348,7 @@ class StackSAModuleMSGTeacher(nn.Module):
                 raise NotImplementedError
             new_features = new_features.squeeze(dim=0).permute(1, 0)  # (M1 + M2 ..., C)
             new_features_list.append(new_features)
+
         new_features = torch.cat(new_features_list, dim=1)  # (M1 + M2 ..., C)
 
         return new_xyz, new_features

@@ -15,8 +15,8 @@ CUDA_VISIBLE_DEVICES=0 python3 -m torch.distributed.launch --nproc_per_node=1 te
 --batch_size 2 \
 --eval_tag $TAG \
 --tcp_port 18881 \
---ckpt ../models/demo/pv_rcnn_8369.pth \
---use_sub_data
+--ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth \
+# --use_sub_data
 
 
 # CFG_DIR=../output/kitti_models/tsubv1_second_mimic/teachersubv1-ResBB-respretrained_klv2_20_gt10_sfp40_onlyt-2
