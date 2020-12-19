@@ -6,7 +6,7 @@ import torch
 
 from ...ops.pointnet2.pointnet2_stack import pointnet2_modules as pointnet2_stack_modules
 from ...ops.pointnet2.pointnet2_stack import pointnet2_utils as pointnet2_stack_utils
-from ...utils import common_utils
+from ...utils import common_utils, mimic_utils
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
                    conv_type='subm', norm_fn=None):
@@ -29,26 +29,6 @@ def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stri
 
     return m
 
-def get_same_indices(high_res_indices, low_res_indices):
-    """
-        Input should be long type
-    """
-    combined_indices_unique = torch.cat((high_res_indices,low_res_indices),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0) 
-    combined_indices_inverse = combined_indices_unique[1][:high_res_indices.shape[0]]
-    indices_sorted, sorted_index = torch.sort(combined_indices_inverse)
-    combined_indices = torch.zeros(combined_indices_unique[2].shape[0], dtype=torch.long).cuda()
-    combined_indices[indices_sorted] = sorted_index
-    combined_indices_mask = combined_indices_unique[2]==2
-    same_indices_high = combined_indices[torch.arange(0,combined_indices_unique[2].shape[0])[combined_indices_mask]]
-    diff_indices = combined_indices[torch.arange(0,combined_indices_unique[2].shape[0])[~combined_indices_mask]]
-    
-    low_inverse = combined_indices_unique[1][high_res_indices.shape[0]:]
-    low_sorted, low_sorted_indices = torch.sort(low_inverse)
-    low_indices = torch.zeros(combined_indices_unique[2].shape[0], dtype=torch.long).cuda()
-    low_indices[low_sorted] = low_sorted_indices
-    same_indices_low = low_indices[torch.arange(0,combined_indices_unique[2].shape[0])[combined_indices_mask]]
-    
-    return same_indices_high, same_indices_low, diff_indices
 
 class SparseBasicBlock(spconv.SparseModule):
     expansion = 1
@@ -117,7 +97,7 @@ class SparseBasicBlock_sub(spconv.SparseModule):
         out.features = self.relu(out.features)
 
         if self.sub_indices is not None:
-            same_indices_high, same_indices_low, diff_indices = get_same_indices(out.indices.long(), self.sub_indices.long())
+            same_indices_high, same_indices_low, diff_indices = mimic_utils.get_same_indices(out.indices.long(), self.sub_indices.long())
             out.features[diff_indices] = 0
 
         out = self.conv2(out)
@@ -224,7 +204,7 @@ class SparseBasicBlock_SA(spconv.SparseModule):
                 new_xyz_batch_cnt=new_xyz_batch_cnt,
                 features=out.features.contiguous(),
             )
-            same_indices_high, same_indices_low, diff_indices = get_same_indices(out.indices.long(), self.sub_indices.long())
+            same_indices_high, same_indices_low, diff_indices = mimic_utils.get_same_indices(out.indices.long(), self.sub_indices.long())
 
             if self.reset_extra_feature:
                 out.features[diff_indices] = 0

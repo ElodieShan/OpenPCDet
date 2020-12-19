@@ -330,24 +330,10 @@ class HintL2Loss(nn.Module):
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
 
         l2_hint_loss_src = torch.pow((input - target), 2)
-
         if weights is None:
             l2_hint_loss = l2_hint_loss_src.sum(dim=-1).mean()
         else:
             l2_hint_loss = l2_hint_loss_src.sum(dim=-1)*weights
-            
-        # for i in range(l2_hint_loss_src.shape[1]):
-        # # for i in range(10):
-        #     if weights is not None and weights[0,i]>0:
-        #             print(i, "- student:\t", input[0,i,:20])
-        #             print(i, "- teacher:\t", target[0,i,:20])
-        #             print(i, "- weights:\t", weights[0,i])
-        #             print(i, "- l2_hint_loss_src:\t", l2_hint_loss_src[0,i,:20])
-        #             print(i, "- l2_hint_loss:\t", l2_hint_loss[0,i])
-
-        #             print("-----------\n")
-
-        # print("\nl2_hint_loss sum:",l2_hint_loss.sum(),"\n\n")
         return l2_hint_loss
 
 
