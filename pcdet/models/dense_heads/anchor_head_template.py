@@ -194,6 +194,9 @@ class AnchorHeadTemplate(nn.Module):
             )
             self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
             self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
+            self.hint_feature_weights = soft_losses_cfg.HINT_LOSS.get('FEATURE_WEIGHTS', None)
+            if self.hint_feature_weights is None:
+                self.hint_feature_weights = np.ones(len(self.hint_feature_list))
             self.hint_gt_only = soft_losses_cfg.HINT_LOSS.get('GT_ONLY', False)
             self.random_select_bg = soft_losses_cfg.HINT_LOSS.get('RANDOM_SELECT_BG', False)
             self.hint_soft_loss_source = soft_losses_cfg.HINT_LOSS.get('SOURCE', None)
@@ -792,7 +795,8 @@ class AnchorHeadTemplate(nn.Module):
                     weights += src_weights*self.soft_loss_weights['weights_sf']
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
-            
+        
+        assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
         for i, feature_ in enumerate(self.hint_feature_list):
             if feature_[:len('x_conv')] == 'x_conv' or feature_ == 'encoded_spconv_tensor':
                 # print("feature_:",feature_)
@@ -857,7 +861,7 @@ class AnchorHeadTemplate(nn.Module):
             # print("frame_id:",frame_id)
             # self.draw_features(teacher_feature, student_feature, frame_id)
 
-            hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss_src
+            hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss_src * self.hint_feature_weights[i]
 
         tb_dict = {
             'hint_loss': hint_loss.item()

@@ -251,11 +251,16 @@ class VoxelBackBone8x(nn.Module):
             x_conv3_coor_inbox = x_conv3_coor_inbox.view(-1,4).unique(dim=0)
             x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
             x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
+            encoded_spconv_tensor = x_conv4_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv4_coor_inbox.shape[0])
+            encoded_spconv_tensor = encoded_spconv_tensor.view(-1,4)
+            encoded_spconv_tensor[:,-1] = encoded_spconv_tensor[:,-1]//2
+            encoded_spconv_tensor = encoded_spconv_tensor.unique(dim=0)
             batch_dict['voxel_coords_inbox_dict'] = {
                 'x_conv1': x_conv1_coor_inbox,
                 'x_conv2': x_conv2_coor_inbox,
                 'x_conv3': x_conv3_coor_inbox,
                 'x_conv4': x_conv4_coor_inbox,
+                'encoded_spconv_tensor': encoded_spconv_tensor,
             }
             batch_dict.pop('voxel_coords_inbox')
 
@@ -370,11 +375,16 @@ class VoxelResBackBone8x(nn.Module):
             x_conv3_coor_inbox = x_conv3_coor_inbox.view(-1,4).unique(dim=0)
             x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
             x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
+            encoded_spconv_tensor = x_conv4_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv4_coor_inbox.shape[0])
+            encoded_spconv_tensor = encoded_spconv_tensor.view(-1,4)
+            encoded_spconv_tensor[:,-1] = encoded_spconv_tensor[:,-1]//2
+            encoded_spconv_tensor = encoded_spconv_tensor.unique(dim=0)
             batch_dict['voxel_coords_inbox_dict'] = {
                 'x_conv1': x_conv1_coor_inbox,
                 'x_conv2': x_conv2_coor_inbox,
                 'x_conv3': x_conv3_coor_inbox,
                 'x_conv4': x_conv4_coor_inbox,
+                'encoded_spconv_tensor': encoded_spconv_tensor,
             }
             batch_dict.pop('voxel_coords_inbox')
             
@@ -716,13 +726,19 @@ class VoxelBackBone8x_v2(nn.Module):
 
             x_conv4_coor_inbox = (x_conv3_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv3_coor_inbox.shape[0]))//2
             x_conv4_coor_inbox = x_conv4_coor_inbox.view(-1,4).unique(dim=0)
-            
+
+            encoded_spconv_tensor = x_conv4_coor_inbox.view(1,-1).repeat(27,1) + expand_index.repeat(1,x_conv4_coor_inbox.shape[0])
+            encoded_spconv_tensor = encoded_spconv_tensor.view(-1,4)
+            encoded_spconv_tensor[:,-1] = encoded_spconv_tensor[:,-1]//2
+            encoded_spconv_tensor = encoded_spconv_tensor.unique(dim=0)
             batch_dict['voxel_coords_inbox_dict'] = {
                 'x_conv1': x_conv1_coor_inbox,
                 'x_conv2': x_conv2_coor_inbox,
                 'x_conv3': x_conv3_coor_inbox,
                 'x_conv4': x_conv4_coor_inbox,
+                'encoded_spconv_tensor': encoded_spconv_tensor,
             }
+
             batch_dict.pop('voxel_coords_inbox')
 
         return batch_dict
