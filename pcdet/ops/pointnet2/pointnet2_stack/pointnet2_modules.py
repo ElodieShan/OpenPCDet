@@ -280,8 +280,8 @@ class StackSAModuleMSGAdapt(nn.Module):
         return new_xyz, new_features
 
 class StackMAXPOOLModuleMSG(nn.Module):
-    def __init__(self, *, radii: List[float], nsamples: List[int], mlps: List[List[int]],
-                 use_xyz: bool = True, pool_method='max_pool'):
+    def __init__(self, *, radii: List[float], nsamples: List[int], 
+                 use_xyz: bool = False, pool_method='max_pool'):
         """
         Args:
             radii: list of float, list of radii to group with
@@ -292,17 +292,14 @@ class StackMAXPOOLModuleMSG(nn.Module):
         """
         super().__init__()
 
-        assert len(radii) == len(nsamples) == len(mlps)
+        assert len(radii) == len(nsamples) 
 
         self.groupers = nn.ModuleList()
-        self.mlps = nn.ModuleList()
         for i in range(len(radii)):
             radius = radii[i]
             nsample = nsamples[i]
             self.groupers.append(pointnet2_utils.QueryAndGroup(radius, nsample, use_xyz=use_xyz))
-            mlp_spec = mlps[i]
-            if use_xyz:
-                mlp_spec[0] += 3
+
 
         self.pool_method = pool_method
 

@@ -244,7 +244,7 @@ class AnchorHeadTemplate(nn.Module):
 
             if self.feature_sa_cfg is not None:
                 for feature_ in self.hint_feature_list:
-                    cfg_ = self.feature_sa_cfg[feature_]
+                    cfg_ = self.feature_attention_cfg[feature_]
                     self.add_module(
                         "teacher_sa_" + feature_,
                         StackMAXPOOLModuleMSG(
@@ -900,15 +900,15 @@ class AnchorHeadTemplate(nn.Module):
                             voxel_size=self.voxel_size,
                             point_cloud_range=self.point_cloud_range
                         )
-                        new_xyz_batch_cnt = torch.LongTensor([(student_feature_coor[student_gt_coor_index][:,0]==i).float().sum() for i in range(batch_size)]).int().cuda()
+                        new_xyz_batch_cnt = torch.LongTensor([(student_feature_coor[student_gt_coor_index]==i).float().sum() for i in range(batch_size)]).int().cuda()
                         xyz = common_utils.get_voxel_centers(
                             teacher_feature_coor[:, 1:4],
                             downsample_times=self.feature_sa_cfg[feature_]['DOWNSAMPLE_FACTOR'],
                             voxel_size=self.voxel_size,
                             point_cloud_range=self.point_cloud_range
                         )
-                        xyz_batch_cnt = torch.LongTensor([(teacher_feature_coor[:,0]==i).float().sum() for i in range(batch_size)]).int().cuda()
-                        pooled_points, pooled_features = getattr(self, 'teacher_sa_'+feature_)(
+                        xyz_batch_cnt = torch.LongTensor([(teacher_feature_coor==i).float().sum() for i in range(batch_size)]).int().cuda()
+                        pooled_points, pooled_features = self.SA_layer(
                             xyz=xyz,
                             xyz_batch_cnt=xyz_batch_cnt,
                             new_xyz=new_xyz,
@@ -916,15 +916,7 @@ class AnchorHeadTemplate(nn.Module):
                             features=teacher_feature.features.contiguous(),
                         )
                         hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_gt_coor_index], pooled_features)
-                        if self.seg_batch:
-                            teacher_index = student_feature.indices[student_gt_coor_index]
-                            hint_loss_src_batch = 0.0
-                            for batch_id in range(batch_size):
-                                teacher_index_batch = teacher_index[:,0]==batch_id
-                                hint_loss_src_batch += (hint_loss_src[teacher_index_batch].sum()/teacher_index_batch.float().sum())
-                            hint_loss_src = hint_loss_src_batch/batch_size
-                        else:
-                            hint_loss_src = hint_loss_src.mean()
+
                     else:
                         teacher_gt_coor_index, student_gt_coor_index2, _ = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor[student_gt_coor_index])
                     
@@ -932,15 +924,15 @@ class AnchorHeadTemplate(nn.Module):
                             # print(student_feature.indices[student_gt_coor_index[student_gt_coor_index2[i]]],teacher_feature.indices[teacher_gt_coor_index[i]])
                         hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_gt_coor_index[student_gt_coor_index2]], teacher_feature.features[teacher_gt_coor_index])
                     
-                        if self.seg_batch:
-                            teacher_index = teacher_feature.indices[teacher_gt_coor_index]
-                            hint_loss_src_batch = 0.0
-                            for batch_id in range(batch_size):
-                                teacher_index_batch = teacher_index[:,0]==batch_id
-                                hint_loss_src_batch += (hint_loss_src[teacher_index_batch].sum()/teacher_index_batch.float().sum())
-                            hint_loss_src = hint_loss_src_batch/batch_size
-                        else:
-                            hint_loss_src = hint_loss_src.mean()
+                    if self.seg_batch:
+                        teacher_index = teacher_feature.indices[teacher_gt_coor_index]
+                        hint_loss_src_batch = 0.0
+                        for batch_id in range(batch_size):
+                            teacher_index_batch = teacher_index[:,0]==batch_id
+                            hint_loss_src_batch += (hint_loss_src[teacher_index_batch].sum()/teacher_index_batch.float().sum())
+                        hint_loss_src = hint_loss_src_batch/batch_size
+                    else:
+                        hint_loss_src = hint_loss_src.mean()
                 elif self.hint_random_sample_feature:
                     gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
                     student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_same_indices_low=False)

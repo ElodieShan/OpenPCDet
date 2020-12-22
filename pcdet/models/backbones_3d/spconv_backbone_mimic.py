@@ -3,32 +3,12 @@ from functools import partial
 import spconv
 import torch.nn as nn
 import torch
+import numpy as np
 from .spconv_backbone import post_act_block, SparseBasicBlock
 
 from ...utils import common_utils, mimic_utils
 
-class MappingBlock(nn.Module):
-    def __init__(self, input_channels, output_channels, kernel_size=1, stride=1):
-        super(MappingBlock, self).__init__()
 
-        self.conv_map = nn.Sequential(
-                            nn.Conv1d(
-                                input_channels, output_channels,
-                                kernel_size=kernel_size, stride=stride
-                            ),
-                            nn.BatchNorm1d(output_channels, eps=1e-3, momentum=0.01),
-                            nn.ReLU(),
-                            nn.Conv1d(
-                                output_channels, output_channels,
-                                kernel_size=1, 
-                            ),
-                    )
-        print("self.conv_map:",self.conv_map)
-
-    def forward(self, x):
-        print(x.shape)
-        out = self.conv_map(x)
-        return out
 
 
 class VoxelBackBone8x_MAP(nn.Module):
