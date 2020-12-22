@@ -339,7 +339,7 @@ class HintL2Loss(nn.Module):
         # for i in range(10):
         #     print(input.shape[0]-i-1,input[input.shape[0]-i-1],target[input.shape[0]-i-1])
         if weights is None:
-            l2_hint_loss = l2_hint_loss_src.sum(dim=-1).mean()
+            l2_hint_loss = l2_hint_loss_src.sum(dim=-1)
         else:
             l2_hint_loss = l2_hint_loss_src.sum(dim=-1)*weights
             

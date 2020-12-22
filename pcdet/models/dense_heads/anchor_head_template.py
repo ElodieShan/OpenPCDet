@@ -10,6 +10,7 @@ from .target_assigner.atss_target_assigner import ATSSTargetAssigner
 from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
 import matplotlib.pyplot as plt
 from ...utils import mimic_utils
+from ...ops.mimic.hint_map import MappingBlock
 
 class AnchorHeadTemplate(nn.Module):
     def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training, cls_score_thred=None):
@@ -199,10 +200,25 @@ class AnchorHeadTemplate(nn.Module):
                 self.hint_feature_weights = np.ones(len(self.hint_feature_list))
             self.hint_gt_only = soft_losses_cfg.HINT_LOSS.get('GT_ONLY', False)
             self.random_select_bg = soft_losses_cfg.HINT_LOSS.get('RANDOM_SELECT_BG', False)
+            self.hint_random_sample_feature = soft_losses_cfg.HINT_LOSS.get('RANDOM_SAMPLE_FEATURE', False)
+            self.seg_batch = soft_losses_cfg.HINT_LOSS.get('SEG_BATCH', False)
             self.hint_soft_loss_source = soft_losses_cfg.HINT_LOSS.get('SOURCE', None)
             self.hint_soft_loss_source_weights = soft_losses_cfg.HINT_LOSS.get('SOURCE_WEIGHTS', None)
             if self.hint_soft_loss_source_weights is None and self.hint_soft_loss_source is not None:
                 self.hint_soft_loss_source_weights = np.ones(len(self.hint_soft_loss_source))
+
+            self.feature_map_cfg = soft_losses_cfg.HINT_LOSS.get('FEATURE_MAPPING',None)
+            if self.feature_map_cfg is not None:
+                for feature_ in self.hint_feature_list:
+                    cfg_ = self.feature_map_cfg[feature_]
+                    self.add_module(
+                        "teacher_map_" + feature_,
+                        MappingBlock(cfg_['CHANNEL'][0], cfg_['CHANNEL'][1], kernel_size=cfg_['KERNEL'], stride=cfg_['STRIDE'])
+                    )
+                    self.add_module(
+                        "student_map_" + feature_,
+                        MappingBlock(cfg_['CHANNEL'][0], cfg_['CHANNEL'][1], kernel_size=cfg_['KERNEL'], stride=cfg_['STRIDE'])
+                    )
 
     def assign_targets(self, gt_boxes):
         """
@@ -796,6 +812,8 @@ class AnchorHeadTemplate(nn.Module):
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
         
+        batch_size = student_data_dict['batch_size']
+
         assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
         for i, feature_ in enumerate(self.hint_feature_list):
             if feature_[:len('x_conv')] == 'x_conv' or feature_ == 'encoded_spconv_tensor':
@@ -806,10 +824,28 @@ class AnchorHeadTemplate(nn.Module):
                 else:  
                     student_feature = student_data_dict['multi_scale_3d_features'][feature_]
                     teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
+
+                
+                student_feature_coor = student_feature.indices.long()
+                teacher_feature_coor = teacher_feature.indices.long()
+                
+                # if self.seg_batch:
+                #     for i in range(batch_size):
+                #         student_feature_coor =
+                if self.feature_map_cfg is not None:
+                    teacher_feature_shape = teacher_feature.features.shape
+                    teacher_feature.features = getattr(self, 'teacher_map_'+feature_)(teacher_feature.features.view(1,teacher_feature_shape[0],teacher_feature_shape[1]).permute(0,2,1))
+                    teacher_feature_shape = teacher_feature.features.shape
+                    teacher_feature.features = teacher_feature.features.permute(0,2,1).view(teacher_feature_shape[2],teacher_feature_shape[1])
+                    student_feature_shape = student_feature.features.shape
+                    student_feature.features = getattr(self, 'student_map_'+feature_)(student_feature.features.view(1,student_feature_shape[0],student_feature_shape[1]).permute(0,2,1))
+                    student_feature_shape = student_feature.features.shape
+                    student_feature.features = student_feature.features.permute(0,2,1).view(student_feature_shape[2],student_feature_shape[1])
+
                 if self.hint_gt_only:
                     assert 'voxel_coords_inbox_dict' in student_data_dict, 'voxel_coords_inbox_dict not in student_data_dict!'
-                    student_feature_coor = student_feature.indices.long()
-                    teacher_feature_coor = teacher_feature.indices.long()
+                    assert self.hint_random_sample_feature is False, 'self.hint_random_sample_feature is True when self.hint_gt_only is True'
+                    
                     gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
 
                     student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_same_indices_low=False)
@@ -822,13 +858,65 @@ class AnchorHeadTemplate(nn.Module):
 
                     teacher_gt_coor_index, student_gt_coor_index2, _ = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor[student_gt_coor_index])
                     
+
                     # for i in range(teacher_gt_coor_index.shape[0]):
                         # print(student_feature.indices[student_gt_coor_index[student_gt_coor_index2[i]]],teacher_feature.indices[teacher_gt_coor_index[i]])
                     hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_gt_coor_index[student_gt_coor_index2]], teacher_feature.features[teacher_gt_coor_index])
-                else:
-                    student_feature_coor = student_feature.indices.long()
-                    teacher_feature_coor = teacher_feature.indices.long()
                     
+                    if self.seg_batch:
+                        teacher_index = teacher_feature.indices[teacher_gt_coor_index]
+                        hint_loss_src_batch = 0.0
+                        for batch_id in range(batch_size):
+                            teacher_index_batch = teacher_index[:,0]==batch_id
+                            hint_loss_src_batch += (hint_loss_src[teacher_index_batch].sum()/teacher_index_batch.float().sum())
+                        hint_loss_src = hint_loss_src_batch/batch_size
+                    else:
+                        hint_loss_src = hint_loss_src.mean()
+                elif self.hint_random_sample_feature:
+                    gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
+                    student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_same_indices_low=False)
+                    teacher_gt_coor_index, _, teacher_gt_diff_index = mimic_utils.get_same_indices(teacher_feature_coor, gt_feature_coor, return_same_indices_low=False)
+                    if self.seg_batch:
+                        batch_sample_num = torch.zeros(batch_size).int().cuda()
+                        for batch_id in range(batch_size):
+                            stu_gt_batch = student_feature_coor[:,0][student_gt_coor_index]==batch_id
+                            stu_diff_batch = student_feature_coor[:,0][student_gt_diff_index]==batch_id
+                            stu_gt_batch_num = stu_gt_batch.int().sum()
+                            stu_diff_batch_num = stu_diff_batch.int().sum()
+                            sample_num = stu_gt_batch_num if stu_gt_batch_num < stu_diff_batch_num else stu_diff_batch_num
+                            # print("student_gt_coor_index:",student_gt_coor_index.shape, "   student_gt_diff_index",student_gt_diff_index.shape,"  sum:",student_gt_coor_index.shape+student_gt_diff_index.shape,student_gt_coor_index.shape[0]+student_gt_diff_index.shape[0],"  ori:",student_feature_coor.shape[0])
+                            student_gt_coor_index_batch = common_utils.random_sample_part(student_gt_coor_index[student_feature_coor[:,0][student_gt_coor_index]==batch_id], sample_num)
+                            # print("\nstudent_gt_coor_index[student_feature_coor[:,0][student_gt_coor_index]==batch_id]:",student_gt_coor_index[student_feature_coor[:,0][student_gt_coor_index]==batch_id],"   student_gt_coor_index_batch:",student_gt_coor_index_batch)
+                            student_gt_diff_index_batch = common_utils.random_sample_part(student_gt_diff_index[student_feature_coor[:,0][student_gt_diff_index]==batch_id], sample_num)
+                            teacher_gt_coor_index_batch = common_utils.random_sample_part(teacher_gt_coor_index[teacher_feature_coor[:,0][teacher_gt_coor_index]==batch_id], sample_num)
+                            teacher_gt_diff_index_batch = common_utils.random_sample_part(teacher_gt_diff_index[teacher_feature_coor[:,0][teacher_gt_diff_index]==batch_id], sample_num)
+                            # print("batch_id:",batch_id,"  student_gt_coor_index_batch:",student_gt_coor_index_batch.shape,"   student_gt_diff_index_batch:",student_gt_diff_index_batch.shape,"\nteacher_gt_coor_index_batch:",teacher_gt_coor_index_batch.shape,"  teacher_gt_diff_index_batch:",teacher_gt_diff_index_batch.shape)
+                            if batch_id == 0:
+                                student_coor_index = torch.cat((student_gt_coor_index_batch, student_gt_diff_index_batch),0)
+                                teacher_coor_index = torch.cat((teacher_gt_coor_index_batch, teacher_gt_diff_index_batch),0)
+                                batch_sample_num[batch_id] = sample_num
+                            else:
+                                student_coor_index = torch.cat((student_coor_index, student_gt_coor_index_batch, student_gt_diff_index_batch),0)
+                                teacher_coor_index = torch.cat((teacher_coor_index, teacher_gt_coor_index_batch, teacher_gt_diff_index_batch),0)
+                                batch_sample_num[batch_id] = sample_num + batch_sample_num[batch_id-1]
+                        # print("student_coor_index:",student_coor_index.shape, student_coor_index.unique(dim=0).shape,"  teacher_coor_index:",teacher_coor_index.shape,teacher_coor_index.unique(dim=0).shape)
+                        hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_coor_index], teacher_feature.features[teacher_coor_index])
+                        hint_loss_src_batch = hint_loss_src[:batch_sample_num[0]].sum() / batch_sample_num[0]
+                        for batch_id in range(1, batch_size):
+                            hint_loss_src_batch += (hint_loss_src[batch_sample_num[batch_id-1]:batch_sample_num[batch_id]].sum()/(batch_sample_num[batch_id]-batch_sample_num[batch_id-1]))
+                        hint_loss_src = hint_loss_src_batch/batch_size
+                    else:            
+                        sample_num = student_gt_coor_index.shape[0]
+                        student_gt_coor_index = common_utils.random_sample_part(student_gt_coor_index, sample_num)
+                        student_gt_diff_index = common_utils.random_sample_part(student_gt_diff_index, sample_num)
+                        teacher_gt_coor_index = common_utils.random_sample_part(teacher_gt_coor_index, sample_num)
+                        teacher_gt_diff_index = common_utils.random_sample_part(teacher_gt_diff_index, sample_num)
+                        student_coor_index = torch.cat((student_gt_coor_index_batch, student_gt_diff_index_batch),0)
+                        teacher_coor_index = torch.cat((teacher_gt_coor_index_batch, teacher_gt_diff_index_batch),0)
+
+                        hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_coor_index], teacher_feature.features[teacher_coor_index])
+                        hint_loss_src = hint_loss_src.mean()
+                else:               
                     st_gt_coor_unique = torch.cat((teacher_feature_coor,student_feature_coor),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0)# get the gt coordinates in teacher models 
                     st_gt_inverse = st_gt_coor_unique[1][:teacher_feature_coor.shape[0]]
                     st_gt_sorted, st_gt_indices = torch.sort(st_gt_inverse)

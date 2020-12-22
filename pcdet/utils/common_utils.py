@@ -192,3 +192,8 @@ def merge_results_dist(result_part, size, tmpdir):
     ordered_results = ordered_results[:size]
     shutil.rmtree(tmpdir)
     return ordered_results
+
+def random_sample_part(ori_index, sample_num):
+    index_mask = np.arange(0,ori_index.shape[0])
+    random.shuffle(index_mask)
+    return ori_index[index_mask[:sample_num]]
