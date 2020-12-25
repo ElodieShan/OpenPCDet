@@ -1,17 +1,18 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG: 
-    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset.yaml
+    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_teacher.yaml
 
 
 MODEL:
-    NAME: SECONDNet
+    NAME: SECONDTEACHERNet
 
     VFE:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x
+        NAME: VoxelBackBone8x_ATTEN
+        SUB_FEATURE_LIST: ['encoded_spconv_tensor']
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -25,6 +26,13 @@ MODEL:
         NUM_FILTERS: [128, 256]
         UPSAMPLE_STRIDES: [1, 2]
         NUM_UPSAMPLE_FILTERS: [256, 256]
+
+    SUB_BACKBONE_2D:
+        NAME: SUB_BACKBONE_2D
+        INPUT_CHANNELS: 256
+
+    SUB_DENSE_HEAD:
+        NAME: AnchorHeadSingle
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle

@@ -1,6 +1,7 @@
 import spconv
 import torch.nn as nn
 import torch
+import numpy as np
 
 class PosEncoding(nn.Module):
     def __init__(self, d_word_vec, max_seq_len= 211200):
@@ -18,12 +19,19 @@ class PosEncoding(nn.Module):
         # fix positional encoding: exclude weight from grad computation
         self.pos_enc.weight = nn.Parameter(torch.from_numpy(pos_enc), requires_grad=False)
 
-    def forward(self, input_len):
-        max_len = torch.max(input_len)
-        tensor = torch.cuda.LongTensor if input_len.is_cuda else torch.LongTensor
-        input_pos = tensor([list(range(1, len+1)) + [0]*(max_len-len) for len in input_len])
+    def forward(self, input_pos):
+        # max_len = torch.max(input_len)
+        # tensor = torch.cuda.LongTensor if input_len.is_cuda else torch.LongTensor
+        # input_pos = tensor([list(range(1, len+1)) + [0]*(max_len-len) for len in input_len])
 
         return self.pos_enc(input_pos)
+
+    # def forward(self, input_len):
+    #     max_len = torch.max(input_len)
+    #     tensor = torch.cuda.LongTensor if input_len.is_cuda else torch.LongTensor
+    #     input_pos = tensor([list(range(1, len+1)) + [0]*(max_len-len) for len in input_len])
+
+    #     return self.pos_enc(input_pos)
 
 class MappingBlock(nn.Module):
     def __init__(self, input_channels,  output_channels, mid_channels=None, kernel_size=1, stride=1):
@@ -49,7 +57,7 @@ class MappingBlock(nn.Module):
         return out
 
 class AttentionBlock(nn.Module):
-    def __init__(self, embed_dim=32, num_heads=3):
+    def __init__(self, embed_dim=32, num_heads=3, max_seq_len=5000, pos_shape=None):
         super(AttentionBlock, self).__init__()
         # def __init__(self, input_channels, output_channels, kernel_size=1, stride=1, embed_dim=64, num_heads=3):
 
@@ -65,15 +73,40 @@ class AttentionBlock(nn.Module):
         #                         kernel_size=1, 
         #                     ),
         #             )
-        # max_seq_len = 5000
-        # self.pos_emb = PosEncoding(max_seq_len * 10, embed_dim)
+        self.indices_pos_shape = [pos_shape[0],pos_shape[1]*pos_shape[0]]
+        self.pos_emb = PosEncoding(embed_dim, max_seq_len)
         self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads)
 
-    def forward(self, teacher_feature, student_feature):
+    def indices_to_pos(self, indices):
+        return indices[:,1] + indices[:,2]*self.indices_pos_shape[0] + indices[:,2]*self.indices_pos_shape[1]
+
+    def forward(self, ori_feature_dict, sub_feature_dict, batch_size):
         # out = self.conv_map(teacher_feature)
         # out = out.permute(2,0,1)
         # self.pos_emb()
-        attn_output, attn_output_weights = self.multihead_attn(student_feature, teacher_feature, teacher_feature)
+        # key=value
+        # batch_cnt = torch.LongTensor([(indices[:,0]==i).sum() for i in range(batch_size)]).cuda()
+        # ori_feature += self.pos_emb(self.indices_to_pos(indices).long())
+        query_feature = sub_feature_dict.features
+        ori_feature = ori_feature_dict.features
+        feature_dim = ori_feature.shape[-1]
+        # sub_query_indices = indices[sub_query_index]
+        # batch_cnt_query = torch.LongTensor([(sub_query_indices[:,0]==i).sum() for i in range(batch_size)])
+        for i in range(batch_size):
+            batch_mask = ori_feature_dict.indices[:,0]==i
+            batch_query_mask = sub_feature_dict.indices[:,0]==i
+            # print("batch_query_mask:",batch_query_mask.shape)
+            # print("indices:",indices.shape)
+            # print("sub_query_index:",sub_query_index.shape)
+            # print("batch_mask:",batch_mask.shape)
+
+            # print("query_feature[batch_query_mask]:",query_feature[batch_query_mask].shape)
+            # print(query_feature[batch_query_mask].view(1,batch_query_mask.sum(),feature_dim))
+            query_feature[batch_query_mask] = self.multihead_attn(
+                query_feature[batch_query_mask].view(1,batch_query_mask.sum(),feature_dim).permute(1,0,2), 
+                ori_feature[batch_mask].view(1,batch_mask.sum(),feature_dim).permute(1,0,2),
+                ori_feature[batch_mask].view(1,batch_mask.sum(),feature_dim).permute(1,0,2))[0].permute(1,0,2).view(-1,feature_dim)
+
         # print("attn_output:",attn_output)
     
-        return attn_output
+        return query_feature

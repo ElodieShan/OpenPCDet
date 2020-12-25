@@ -22,8 +22,9 @@ class Detector3DTemplate(nn.Module):
         self.add_bg_class = False # elodie
         self.module_topology = [
             'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
-            'backbone_2d', 'dense_head',  'point_head', 'roi_head'
+            'backbone_2d', 'dense_head',  'point_head', 'roi_head', 
         ]
+        self.sub_module_topology = ['sub_backbone_2d', 'sub_dense_head']
 
     @property
     def mode(self):
@@ -32,7 +33,7 @@ class Detector3DTemplate(nn.Module):
     def update_global_step(self):
         self.global_step += 1
 
-    def build_networks(self):
+    def build_networks(self, build_sub_branch_net=False):
         model_info_dict = {
             'module_list': [],
             'num_rawpoint_features': self.dataset.point_feature_encoder.num_point_features,
@@ -46,6 +47,13 @@ class Detector3DTemplate(nn.Module):
                 model_info_dict=model_info_dict
             )
             self.add_module(module_name, module)
+
+        if build_sub_branch_net: # elodie
+            for module_name in self.sub_module_topology:
+                module, model_info_dict = getattr(self, 'build_%s' % module_name)(
+                    model_info_dict=model_info_dict
+                )
+                self.add_module(module_name, module)
         return model_info_dict['module_list']
 
     def build_vfe(self, model_info_dict):
@@ -101,6 +109,18 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['num_bev_features'] = backbone_2d_module.num_bev_features
         return backbone_2d_module, model_info_dict
 
+    def build_sub_backbone_2d(self, model_info_dict):
+        if self.model_cfg.get('SUB_BACKBONE_2D', None) is None:
+            return None, model_info_dict
+
+        sub_backbone_2d_module = backbones_2d.__all__[self.model_cfg.BACKBONE_2D.NAME](
+            model_cfg=self.model_cfg.BACKBONE_2D,
+            input_channels=self.model_cfg.SUB_BACKBONE_2D.INPUT_CHANNELS
+        )
+        model_info_dict['module_list'].append(sub_backbone_2d_module)
+        # model_info_dict['num_bev_features'] = sub_backbone_2d_module.num_bev_features
+        return sub_backbone_2d_module, model_info_dict
+
     def build_pfe(self, model_info_dict):
         if self.model_cfg.get('PFE', None) is None:
             return None, model_info_dict
@@ -134,6 +154,23 @@ class Detector3DTemplate(nn.Module):
         )
         model_info_dict['module_list'].append(dense_head_module)
         return dense_head_module, model_info_dict
+
+    def build_sub_dense_head(self, model_info_dict):
+        if self.model_cfg.get('SUB_DENSE_HEAD', None) is None:
+            return None, model_info_dict
+        sub_dense_head_module = dense_heads.__all__[self.model_cfg.DENSE_HEAD.NAME](
+            model_cfg=self.model_cfg.DENSE_HEAD,
+            input_channels=model_info_dict['num_bev_features'],
+            num_class=self.num_class if not self.model_cfg.DENSE_HEAD.CLASS_AGNOSTIC else 1,
+            class_names=self.class_names,
+            grid_size=model_info_dict['grid_size'],
+            voxel_size=model_info_dict['voxel_size'],
+            point_cloud_range=model_info_dict['point_cloud_range'],
+            predict_boxes_when_training=self.model_cfg.get('ROI_HEAD', False),
+            cls_score_thred= 0.1 if self.model_cfg.get('POST_PROCESSING', None) is None else self.model_cfg.POST_PROCESSING.get('SCORE_THRESH', 0.1)
+        )
+        model_info_dict['module_list'].append(sub_dense_head_module)
+        return sub_dense_head_module, model_info_dict
 
     def build_point_head(self, model_info_dict):
         if self.model_cfg.get('POINT_HEAD', None) is None:

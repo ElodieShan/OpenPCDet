@@ -56,7 +56,7 @@ DATA_PROCESSOR:
       REMOVE_OUTSIDE_BOXES: True
       
     - NAME: downsample_points_16lines
-      ALIGN_POINTS: True
+      # ALIGN_POINTS: True
       DOWNSAMPLE_POINTS: {
         'train': True,
         'test': True
@@ -65,7 +65,7 @@ DATA_PROCESSOR:
         'train': False,
         'test': True
       }
-      GET_INBOX_POINTS: True
+      # GET_INBOX_POINTS: True
 
     - NAME: shuffle_points
       ALIGN_POINTS: True

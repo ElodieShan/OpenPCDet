@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from . import box_utils
 
-def get_same_indices(high_res_indices, low_res_indices, return_same_indices_low=True):
+def get_same_indices(high_res_indices, low_res_indices, return_diff_indices=False, return_same_indices_low=True):
     """
         Input should be long type
     """
@@ -16,9 +16,12 @@ def get_same_indices(high_res_indices, low_res_indices, return_same_indices_low=
     combined_indices[indices_sorted] = sorted_index
     combined_indices_mask = combined_indices_unique[2]==2
     same_indices_high = combined_indices[torch.arange(0,combined_indices_unique[2].shape[0])[combined_indices_mask]]
-    diff_indices_mask = torch.ones(high_res_indices.shape[0]).bool()
-    diff_indices_mask[same_indices_high] = False
-    diff_indices = torch.arange(0,high_res_indices.shape[0])[diff_indices_mask].cuda()
+    if return_diff_indices:
+        diff_indices_mask = torch.ones(high_res_indices.shape[0]).bool()
+        diff_indices_mask[same_indices_high] = False
+        diff_indices = torch.arange(0,high_res_indices.shape[0])[diff_indices_mask].cuda()
+    else:
+        diff_indices = None
     # diff_indices = combined_indices[torch.arange(0,combined_indices_unique[2].shape[0])[~combined_indices_mask]]
     if return_same_indices_low:
         low_inverse = combined_indices_unique[1][high_res_indices.shape[0]:]

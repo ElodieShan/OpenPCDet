@@ -61,13 +61,20 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             batch_dict_sub = None
             if "16lines" in batch: # dangerous
                 if use_sub_data:
-                    batch_dict_sub = copy.deepcopy(batch)
-                    batch_dict_sub['points'] = batch_dict_sub['16lines']['points_16lines']
-                    batch_dict_sub['voxels'] = batch_dict_sub['16lines']['voxels']
-                    batch_dict_sub['voxel_coords'] = batch_dict_sub['16lines']['voxel_coords']
-                    batch_dict_sub['voxel_num_points'] = batch_dict_sub['16lines']['voxel_num_points']
-                    batch_dict_sub.pop('16lines')
-                    batch.pop('16lines')
+                    batch_dict_sub = {
+                        'voxels': copy.deepcopy(batch['16lines']['voxels']),
+                        'voxel_coords': copy.deepcopy(batch['16lines']['voxel_coords']),
+                        'voxel_num_points': copy.deepcopy(batch['16lines']['voxel_num_points']),
+                        'batch_size': batch['batch_size'],
+                        'sub_data':True,
+                    }
+                    # batch_dict_sub = copy.deepcopy(batch)
+                    # batch_dict_sub['points'] = batch_dict_sub['16lines']['points_16lines']
+                    # batch_dict_sub['voxels'] = batch_dict_sub['16lines']['voxels']
+                    # batch_dict_sub['voxel_coords'] = batch_dict_sub['16lines']['voxel_coords']
+                    # batch_dict_sub['voxel_num_points'] = batch_dict_sub['16lines']['voxel_num_points']
+                    # batch_dict_sub.pop('16lines')
+                    # batch.pop('16lines')
                 else:
                     batch['points'] = batch['16lines']['points_16lines']
                     batch['voxels'] = batch['16lines']['voxels']

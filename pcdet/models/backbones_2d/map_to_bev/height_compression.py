@@ -23,4 +23,13 @@ class HeightCompression(nn.Module):
         spatial_features = spatial_features.view(N, C * D, H, W)
         batch_dict['spatial_features'] = spatial_features
         batch_dict['spatial_features_stride'] = batch_dict['encoded_spconv_tensor_stride']
+    
+        if 'sub_branch' in batch_dict: #elodie
+            sub_encoded_spconv_tensor = batch_dict['sub_branch']['encoded_spconv_tensor']
+            sub_spatial_features = sub_encoded_spconv_tensor.dense()
+            N, C, D, H, W = sub_spatial_features.shape
+            sub_spatial_features = sub_spatial_features.view(N, C * D, H, W)
+            batch_dict['sub_branch']['spatial_features'] = sub_spatial_features
+            batch_dict['sub_branch']['spatial_features_stride'] = batch_dict['encoded_spconv_tensor_stride']
+
         return batch_dict
