@@ -13,7 +13,7 @@ class PosEncoding(nn.Module):
         pos_enc[:, 1::2] = np.cos(pos_enc[:, 1::2])
         pad_row = np.zeros([1, d_word_vec])
         pos_enc = np.concatenate([pad_row, pos_enc]).astype(np.float32)
-
+        self.max_seq_len = max_seq_len
         # additional single row for PAD idx
         self.pos_enc = nn.Embedding(max_seq_len + 1, d_word_vec)
         # fix positional encoding: exclude weight from grad computation
@@ -78,7 +78,7 @@ class AttentionBlock(nn.Module):
         self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads)
 
     def indices_to_pos(self, indices):
-        return indices[:,1] + indices[:,2]*self.indices_pos_shape[0] + indices[:,2]*self.indices_pos_shape[1]
+        return indices[:,1] + indices[:,2]*self.indices_pos_shape[0] + indices[:,3]*self.indices_pos_shape[1] + 1
 
     def forward(self, ori_feature_dict, sub_feature_dict, batch_size):
         # out = self.conv_map(teacher_feature)
@@ -86,16 +86,21 @@ class AttentionBlock(nn.Module):
         # self.pos_emb()
         # key=value
         # batch_cnt = torch.LongTensor([(indices[:,0]==i).sum() for i in range(batch_size)]).cuda()
-        # ori_feature += self.pos_emb(self.indices_to_pos(indices).long())
-        query_feature = sub_feature_dict.features
         ori_feature = ori_feature_dict.features
+        ori_indices = ori_feature_dict.indices
+        ori_feature += self.pos_emb(self.indices_to_pos(ori_indices).long())
+        query_feature = sub_feature_dict.features
+        query_indices = sub_feature_dict.indices
+        query_feature += self.pos_emb(self.indices_to_pos(query_indices).long())
+
         feature_dim = ori_feature.shape[-1]
+
         # sub_query_indices = indices[sub_query_index]
         # batch_cnt_query = torch.LongTensor([(sub_query_indices[:,0]==i).sum() for i in range(batch_size)])
         for i in range(batch_size):
-            batch_mask = ori_feature_dict.indices[:,0]==i
-            batch_query_mask = sub_feature_dict.indices[:,0]==i
-            # print("batch_query_mask:",batch_query_mask.shape)
+            batch_mask = ori_indices[:,0]==i
+            batch_query_mask = query_indices[:,0]==i
+
             # print("indices:",indices.shape)
             # print("sub_query_index:",sub_query_index.shape)
             # print("batch_mask:",batch_mask.shape)
@@ -103,9 +108,11 @@ class AttentionBlock(nn.Module):
             # print("query_feature[batch_query_mask]:",query_feature[batch_query_mask].shape)
             # print(query_feature[batch_query_mask].view(1,batch_query_mask.sum(),feature_dim))
             query_feature[batch_query_mask] = self.multihead_attn(
-                query_feature[batch_query_mask].view(1,batch_query_mask.sum(),feature_dim).permute(1,0,2), 
+                query_feature.clone()[batch_query_mask].view(1,batch_query_mask.sum(),feature_dim).permute(1,0,2), 
                 ori_feature[batch_mask].view(1,batch_mask.sum(),feature_dim).permute(1,0,2),
                 ori_feature[batch_mask].view(1,batch_mask.sum(),feature_dim).permute(1,0,2))[0].permute(1,0,2).view(-1,feature_dim)
+        # print("query_feature af:",query_feature)
+        # print("sub_feature_dict af:",sub_feature_dict.features)
 
         # print("attn_output:",attn_output)
     

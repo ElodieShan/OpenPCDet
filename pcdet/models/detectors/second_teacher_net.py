@@ -22,11 +22,13 @@ class SECONDTEACHERNet(Detector3DTemplate):
         for cur_module in self.module_list[:-2]:
             batch_dict = cur_module(batch_dict)
 
-        batch_dict['sub_branch']['batch_size'] = batch_dict['batch_size']
-        batch_dict['sub_branch']['gt_boxes'] = batch_dict['gt_boxes']
+        if 'sub_branch' in batch_dict:
+            batch_dict['sub_branch']['batch_size'] = batch_dict['batch_size']
+            batch_dict['sub_branch']['gt_boxes'] = batch_dict['gt_boxes']
 
-        for cur_module in self.module_list[-2:]:
-            batch_dict['sub_branch'] = cur_module(batch_dict['sub_branch'])
+            for cur_module in self.module_list[-2:]:
+                batch_dict['sub_branch'] = cur_module(batch_dict['sub_branch'])
+                print("OK")
 
         if is_teacher:
             forword_result = self.get_forword_result()
@@ -40,7 +42,11 @@ class SECONDTEACHERNet(Detector3DTemplate):
             }
             return ret_dict, tb_dict, disp_dict
         else:
-            cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
+            # cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
+            cls_recall, cls_precision = self.sub_dense_head.get_cls_pr_dict()
+            print("\nori:",self.dense_head.forward_ret_dict)
+
+            print("\nsub:",self.sub_dense_head.forward_ret_dict)
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             cls_dict = {
                 'cls_recall':cls_recall,
@@ -68,6 +74,10 @@ class SECONDTEACHERNet(Detector3DTemplate):
         tb_dict = {
             'loss_rpn': loss_rpn.item(),
             'sub_branch/loss_rpn': sub_loss_rpn.item(),
+            'mimic/sub_cls_preds_student_precision': sub_tb_dict['mimic/cls_preds_student_precision'],
+            'mimic/sub_cls_preds_student_recall': sub_tb_dict['mimic/cls_preds_student_recall'],
+            'sub_branch/rpn_hard_loss_cls': sub_tb_dict['rpn_hard_loss_cls'],
+            'sub_branch/rpn_hard_loss_reg': sub_tb_dict['rpn_hard_loss_reg'],
             'sub_branch/rpn_loss_cls': sub_tb_dict['rpn_loss_cls'],
             'sub_branch/rpn_loss_loc': sub_tb_dict['rpn_loss_loc'],
             'sub_branch/rpn_loss_dir': sub_tb_dict['rpn_loss_dir'],
