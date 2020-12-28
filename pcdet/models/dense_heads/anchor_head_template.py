@@ -851,11 +851,14 @@ class AnchorHeadTemplate(nn.Module):
 
         assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
         for i, feature_ in enumerate(self.hint_feature_list):
-            if feature_[:len('x_conv')] == 'x_conv' or feature_ == 'encoded_spconv_tensor':
+            if feature_[:len('x_conv')] == 'x_conv' or feature_[-len('encoded_spconv_tensor'):] == 'encoded_spconv_tensor':
                 # print("feature_:",feature_)
                 if feature_ == 'encoded_spconv_tensor':
                     student_feature = student_data_dict[feature_]
                     teacher_feature = teacher_data_dict[feature_]
+                elif feature_ == 'sub_encoded_spconv_tensor':
+                    student_feature = student_data_dict['encoded_spconv_tensor']
+                    teacher_feature = teacher_data_dict['sub_branch']['encoded_spconv_tensor']
                 else:  
                     student_feature = student_data_dict['multi_scale_3d_features'][feature_]
                     teacher_feature = teacher_data_dict['multi_scale_3d_features'][feature_]
@@ -883,9 +886,12 @@ class AnchorHeadTemplate(nn.Module):
                     assert 'voxel_coords_inbox_dict' in student_data_dict, 'voxel_coords_inbox_dict not in student_data_dict!'
                     assert self.hint_random_sample_feature is False, 'self.hint_random_sample_feature is True when self.hint_gt_only is True'
                     
-                    gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
+                    if feature_ == 'sub_encoded_spconv_tensor':
+                        gt_feature_coor = student_data_dict['voxel_coords_inbox_dict']['encoded_spconv_tensor']
+                    else:
+                        gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
 
-                    student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_same_indices_low=False)
+                    student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_diff_indices=True, return_same_indices_low=False)
 
                     if self.random_select_bg:
                         rand_index_mask = np.arange(0,student_gt_diff_index.shape[0])
@@ -943,8 +949,8 @@ class AnchorHeadTemplate(nn.Module):
                             hint_loss_src = hint_loss_src.mean()
                 elif self.hint_random_sample_feature:
                     gt_feature_coor = student_data_dict['voxel_coords_inbox_dict'][feature_]
-                    student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_same_indices_low=False)
-                    teacher_gt_coor_index, _, teacher_gt_diff_index = mimic_utils.get_same_indices(teacher_feature_coor, gt_feature_coor, return_same_indices_low=False)
+                    student_gt_coor_index, _, student_gt_diff_index = mimic_utils.get_same_indices(student_feature_coor, gt_feature_coor, return_diff_indices=True, return_same_indices_low=False)
+                    teacher_gt_coor_index, _, teacher_gt_diff_index = mimic_utils.get_same_indices(teacher_feature_coor, gt_feature_coor, return_diff_indices=True, return_same_indices_low=False)
                     if self.seg_batch:
                         hint_loss_src_batch = 0.0
                         # batch_sample_num = torch.zeros(batch_size).int().cuda()

@@ -859,3 +859,145 @@ class VoxelBackBone8x_ATTEN_v2(nn.Module):
         if 'voxel_coords_inbox' in batch_dict:
             batch_dict = get_voxel_coords_inbox_dict(batch_dict)
         return batch_dict
+
+
+
+
+class VoxelBackBone8x_ATTEN_v3(nn.Module):
+    def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+        super().__init__()
+        self.model_cfg = model_cfg
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+
+        self.sparse_shape = grid_size[::-1] + [1, 0, 0]
+
+        self.conv_input = spconv.SparseSequential(
+            spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
+            norm_fn(16),
+            nn.ReLU(),
+        )
+        block = post_act_block
+
+        self.conv1 = spconv.SparseSequential(
+            block(16, 16, 3, norm_fn=norm_fn, padding=1, indice_key='subm1'),
+        )
+
+        self.conv2 = spconv.SparseSequential(
+            # [1600, 1408, 41] <- [800, 704, 21]
+            block(16, 32, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv2', conv_type='spconv'),
+            block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
+            block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
+        )
+
+        self.conv3 = spconv.SparseSequential(
+            # [800, 704, 21] <- [400, 352, 11]
+            block(32, 64, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv3', conv_type='spconv'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'),
+        )
+
+        self.conv4 = spconv.SparseSequential(
+            # [400, 352, 11] <- [200, 176, 5]
+            block(64, 64, 3, norm_fn=norm_fn, stride=2, padding=(0, 1, 1), indice_key='spconv4', conv_type='spconv'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'),
+        )
+
+        last_pad = 0
+        last_pad = self.model_cfg.get('last_pad', last_pad)
+        self.conv_out = spconv.SparseSequential(
+            # [200, 176, 5] -> [200, 176, 2]
+            spconv.SparseConv3d(64, 128, (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
+                                bias=False, indice_key='spconv_down2'),
+            norm_fn(128),
+            nn.ReLU(),
+        )
+
+        self.conv_out_atten = AttentionBlock(embed_dim=64, num_heads=4, max_seq_len=2*200*176, pos_shape=[2, 200, 176])
+
+        # [200, 176, 2]
+        self.conv_channeldown = block(128, 64, 3, norm_fn=norm_fn, padding=1, indice_key='spconv_down2')
+
+        # [200, 176, 2]
+        self.conv_channelup = block(64, 128, 3, norm_fn=norm_fn, padding=1, indice_key='spconv_down2')
+
+
+        self.num_point_features = 128
+
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+
+        x = self.conv_input(input_sp_tensor)
+
+        x_conv1 = self.conv1(x)
+        x_conv2 = self.conv2(x_conv1)
+        x_conv3 = self.conv3(x_conv2)
+        x_conv4 = self.conv4(x_conv3)
+
+        # for detection head
+        # [200, 176, 5] -> [200, 176, 2]
+        out = self.conv_out(x_conv4)
+
+        if 'sub_branch' in batch_dict:
+            same_index = mimic_utils.get_same_indices(out.indices, batch_dict['sub_branch']['encoded_spconv_tensor'].indices, return_same_indices_low=False)[0]
+
+            sub_out = spconv.SparseConvTensor(
+                features=out.features[same_index].clone(),
+                indices=out.indices[same_index],
+                spatial_shape=out.spatial_shape,
+                batch_size=batch_size
+            )
+
+            out_downsample = self.conv_channeldown(out)
+            sub_out = self.conv_channeldown(sub_out)
+
+            sub_out.features = self.conv_out_atten(out_downsample, sub_out, batch_size)
+
+            sub_out_up = self.conv_channelup(sub_out)
+
+
+            batch_dict['sub_branch'].update({
+                'encoded_spconv_tensor': sub_out_up,
+                'encoded_spconv_tensor_stride': 8,
+            })
+
+        if 'sub_data' in batch_dict and batch_dict['sub_data']:
+            out.indice_dict = None
+            batch_dict.update({
+                'encoded_spconv_tensor': out,
+                'encoded_spconv_tensor_stride': 8
+            })
+        else:
+            batch_dict.update({
+                'encoded_spconv_tensor': out,
+                'encoded_spconv_tensor_stride': 8
+            })
+            batch_dict.update({
+                'multi_scale_3d_features': {
+                    'x_conv1': x_conv1,
+                    'x_conv2': x_conv2,
+                    'x_conv3': x_conv3,
+                    'x_conv4': x_conv4,
+                }
+            })
+
+        if 'voxel_coords_inbox' in batch_dict:
+            batch_dict = get_voxel_coords_inbox_dict(batch_dict)
+        return batch_dict
