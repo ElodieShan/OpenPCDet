@@ -92,15 +92,15 @@ class AxisAlignedTargetAssigner(object):
                 # print("\box_cls_labels:")
 
                 # for i in range(single_target['box_cls_labels'].shape[-1]):
-                    # if single_target['box_cls_labels'][i]>0:
-                    # print(single_target['box_cls_labels'][i])
+                #     if single_target['box_cls_labels'][i]>0:
+                #         print(single_target['box_cls_labels'][i])
                 # print("\box_reg_targets:",single_target['box_reg_targets'].shape)
                 # for i in range(single_target['box_reg_targets'].shape[-1]):
                 #     if single_target['box_reg_targets'][i].sum()!=0:
                 #         print(single_target['box_reg_targets'][i])
                 # print("\nbox_reg_targets:")
                 # for i in range(single_target['box_reg_targets'].shape[-1]):
-                        # print(single_target['box_reg_targets'][i])
+                #         print(single_target['box_reg_targets'][i])
 
                 target_list.append(single_target)
 

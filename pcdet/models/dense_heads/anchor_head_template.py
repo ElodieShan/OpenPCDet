@@ -31,7 +31,7 @@ class AnchorHeadTemplate(nn.Module):
         anchor_generator_cfg = self.model_cfg.ANCHOR_GENERATOR_CONFIG
         anchors, self.num_anchors_per_location = self.generate_anchors(
             anchor_generator_cfg, grid_size=grid_size, point_cloud_range=point_cloud_range,
-            anchor_ndim=self.box_coder.code_size
+            anchor_ndim=self.box_coder.code_size, anchor_from_range=self.model_cfg.get('ANCHOR_FROM_RANGE',False)
         )
         self.anchors = [x.cuda() for x in anchors]
         self.target_assigner = self.get_target_assigner(anchor_target_cfg)
@@ -70,10 +70,11 @@ class AnchorHeadTemplate(nn.Module):
         }
 
     @staticmethod
-    def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7):
+    def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7, anchor_from_range=False):
         anchor_generator = AnchorGenerator(
             anchor_range=point_cloud_range,
-            anchor_generator_config=anchor_generator_cfg
+            anchor_generator_config=anchor_generator_cfg,
+            anchor_from_range=anchor_from_range
         )
         feature_map_size = [grid_size[:2] // config['feature_map_stride'] for config in anchor_generator_cfg]
         anchors_list, num_anchors_per_location_list = anchor_generator.generate_anchors(feature_map_size)
@@ -321,6 +322,7 @@ class AnchorHeadTemplate(nn.Module):
             box_cls_labels[positives] = 1
 
         pos_normalizer = positives.sum(1, keepdim=True).float()
+
         reg_weights /= torch.clamp(pos_normalizer, min=1.0)
         cls_weights /= torch.clamp(pos_normalizer, min=1.0)
 

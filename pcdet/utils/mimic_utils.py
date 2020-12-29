@@ -32,3 +32,11 @@ def get_same_indices(high_res_indices, low_res_indices, return_diff_indices=Fals
         return same_indices_high, same_indices_low, diff_indices
     else:
         return same_indices_high, None, diff_indices
+
+def get_same_mask(high_res_indices, low_res_indices):
+    combined_indices_unique = torch.cat((high_res_indices,low_res_indices),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0) 
+    combined_indices_mask = combined_indices_unique[2]==2
+    combined_indices_inverse = combined_indices_unique[1][:high_res_indices.shape[0]]
+    same_mask = combined_indices_mask[combined_indices_inverse]
+
+    return torch.arange(0,high_res_indices.shape[0])[same_mask]

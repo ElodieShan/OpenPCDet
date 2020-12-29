@@ -2,7 +2,7 @@ import torch
 
 
 class AnchorGenerator(object):
-    def __init__(self, anchor_range, anchor_generator_config):
+    def __init__(self, anchor_range, anchor_generator_config, anchor_from_range=False):
         super().__init__()
         self.anchor_generator_cfg = anchor_generator_config
         self.anchor_range = anchor_range
@@ -10,11 +10,13 @@ class AnchorGenerator(object):
         self.anchor_rotations = [config['anchor_rotations'] for config in anchor_generator_config]
         self.anchor_heights = [config['anchor_bottom_heights'] for config in anchor_generator_config]
         self.align_center = [config.get('align_center', False) for config in anchor_generator_config]
-
+        self.anchor_from_range = anchor_from_range
+        
         assert len(self.anchor_sizes) == len(self.anchor_rotations) == len(self.anchor_heights)
         self.num_of_anchor_sets = len(self.anchor_sizes)
 
-    def generate_anchors(self, grid_sizes):
+    def generate_anchors(self, grid_sizes, use_range=False):
+        # elodie add use_range
         assert len(grid_sizes) == self.num_of_anchor_sets
         all_anchors = []
         num_anchors_per_location = []
@@ -45,7 +47,16 @@ class AnchorGenerator(object):
             x_shifts, y_shifts, z_shifts = torch.meshgrid([
                 x_shifts, y_shifts, z_shifts
             ])  # [x_grid, y_grid, z_grid]
+
             anchors = torch.stack((x_shifts, y_shifts, z_shifts), dim=-1)  # [x, y, z, 3]
+            if self.anchor_from_range:
+                # print("OK")
+                distance_2d = anchors[...,0]*torch.cos(anchors[...,1]*0.01745329)
+
+                # anchors[...,2] = torch.tan(anchors[...,2]*0.01745329)
+                anchors[...,1] = anchors[...,0]*torch.sin(anchors[...,1]*0.01745329)
+                anchors[...,0] = distance_2d
+
             anchors = anchors[:, :, :, None, :].repeat(1, 1, 1, anchor_size.shape[0], 1)
             anchor_size = anchor_size.view(1, 1, 1, -1, 3).repeat([*anchors.shape[0:3], 1, 1])
             anchors = torch.cat((anchors, anchor_size), dim=-1)
@@ -56,6 +67,7 @@ class AnchorGenerator(object):
             anchors = anchors.permute(2, 1, 0, 3, 4, 5).contiguous()
             #anchors = anchors.view(-1, anchors.shape[-1])
             anchors[..., 2] += anchors[..., 5] / 2  # shift to box centers
+
             all_anchors.append(anchors)
         return all_anchors, num_anchors_per_location
 

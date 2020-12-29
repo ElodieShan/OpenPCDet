@@ -1,17 +1,18 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG: 
-    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_teacher.yaml
+    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset.yaml
+    # _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_range.yaml
 
 
 MODEL:
-    NAME: SECONDTEACHERNet
+    NAME: SECONDNet
 
     VFE:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x_ATTEN
+        NAME: VoxelBackBone8x
         SUB_FEATURE_LIST: ['encoded_spconv_tensor']
 
     MAP_TO_BEV:
@@ -27,12 +28,12 @@ MODEL:
         UPSAMPLE_STRIDES: [1, 2]
         NUM_UPSAMPLE_FILTERS: [256, 256]
 
-    SUB_BACKBONE_2D:
-        NAME: SUB_BACKBONE_2D
-        INPUT_CHANNELS: 256
+    # SUB_BACKBONE_2D:
+    #     NAME: SUB_BACKBONE_2D
+    #     INPUT_CHANNELS: 256
 
-    SUB_DENSE_HEAD:
-        NAME: AnchorHeadSingle
+    # SUB_DENSE_HEAD:
+    #     NAME: AnchorHeadSingle
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -43,6 +44,7 @@ MODEL:
         DIR_LIMIT_OFFSET: 0.0
         NUM_DIR_BINS: 2
 
+        # ANCHOR_FROM_RANGE: True #elodie
         ANCHOR_GENERATOR_CONFIG: [
             {
                 'class_name': 'Car',
@@ -91,6 +93,7 @@ MODEL:
                 'dir_weight': 0.2,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
+            SUB_LOSS_WEIGHT: 0.1
 
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]

@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 import torch
 
-from ...utils import box_utils, common_utils, pointcloud_sample_utils
+from ...utils import box_utils, common_utils, pointcloud_sample_utils, pointcloud_utils
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 
 class DataProcessor(object):
@@ -78,20 +78,39 @@ class DataProcessor(object):
             self.voxel_size = config.VOXEL_SIZE
             return partial(self.transform_points_to_voxels, voxel_generator=voxel_generator)
         points = data_dict['points']
+        if points.shape[1]>4:# elodie has range info
+            # print("points before:",points)
+            points[:,5] = pointcloud_utils.get_distances_2d(points)
+            points = points[:,[5,4,6,0,1,2,3]] # distance_2d, horizontal_angle, vertical_angle,x,y,z,intensity
+            # print("distance_2d:",np.max(points[:,0]), np.min(points[:,0]))
+            # print("horizontal_angle:",np.max(points[:,1]), np.min(points[:,1]))
+            # print("vertical_angle:",np.max(points[:,2]), np.min(points[:,2]))
+
+            # print("points sfter:",points)
+
         voxel_output = voxel_generator.generate(points)
+        
         if isinstance(voxel_output, dict):
             voxels, coordinates, num_points = \
                 voxel_output['voxels'], voxel_output['coordinates'], voxel_output['num_points_per_voxel']
         else:
             voxels, coordinates, num_points = voxel_output
-        # print("coordinates:",coordinates.shape)
-        # print("coordinates:",coordinates)
+
+        if voxels.shape[-1]>4:
+            voxels = voxels[..., 3:] 
+
         if not data_dict['use_lead_xyz']:
             voxels = voxels[..., 3:]  # remove xyz in voxels(N, 3)
 
         data_dict['voxels'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
+        # print("voxels:",voxels.shape)
+        # print("coordinates:",coordinates)
+        # print("num_points:",num_points)
+        # for i in range(100):
+        #     print(i,"\n voxel:",voxels[i],'\ncoordinates:',coordinates[i],'\nnum_points:',num_points[i])
+        #     print("ring:",data_dict['ring'][i])
         if '16lines' in data_dict: #elodie
             points_16lines = data_dict['16lines']['points_16lines']
             voxel_output_16lines = voxel_generator.generate(points_16lines)
@@ -197,7 +216,7 @@ class DataProcessor(object):
                     torch.from_numpy(points_16lines[:, 0:3]), torch.from_numpy(data_dict['gt_boxes'][:,:7])
                 ).numpy()
                 data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
-        data_dict.pop('ring')
+        # data_dict.pop('ring')
         return data_dict
 
     def forward(self, data_dict):

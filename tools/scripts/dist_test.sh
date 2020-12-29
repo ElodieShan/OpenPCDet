@@ -4,10 +4,10 @@ set -x
 NGPUS=$1
 PY_ARGS=${@:2}
 
-CFG_DIR=../output/kitti_models/second2/sub_branch-downsample
-CFG_FILE=second2.yaml
+CFG_DIR=../output/kitti_models/second/sub_branch-attn_downspatial
+CFG_FILE=second.yaml
 EPOCH=80
-TAG=test_ori_branch
+TAG=test_sub_branch
 
 CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \

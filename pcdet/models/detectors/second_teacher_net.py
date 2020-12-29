@@ -6,6 +6,7 @@ class SECONDTEACHERNet(Detector3DTemplate):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_list = self.build_networks(build_sub_branch_net=True) # elodie
         self.backbone_cfg = model_cfg['BACKBONE_3D']
+        self.sub_loss_weight = model_cfg['DENSE_HEAD']['LOSS_CONFIG'].get('SUB_LOSS_WEIGHT', 1)
 
     def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, batch_dict_sub=None):
         if batch_dict_sub is not None:
@@ -80,6 +81,6 @@ class SECONDTEACHERNet(Detector3DTemplate):
             'sub_branch/rpn_loss_dir': sub_tb_dict['rpn_loss_dir'],
             **tb_dict
         }
-        loss = loss_rpn + sub_loss_rpn
+        loss = loss_rpn + sub_loss_rpn*self.sub_loss_weight
         #disp_dict是空的?
         return loss, tb_dict, disp_dict

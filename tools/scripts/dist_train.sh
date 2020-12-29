@@ -13,10 +13,10 @@ PY_ARGS=${@:2}
 # --ckpt_save_interval 2 \
 # --use_sub_data
 
-CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 train.py \
---launcher pytorch --cfg_file cfgs/kitti_models/second2.yaml \
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=2 train.py \
+--launcher pytorch --cfg_file cfgs/kitti_models/second.yaml \
 --tcp_port 18888 \
---extra_tag test-sub_branch-downchannel \
+--extra_tag sub_branch-attn_downspatial \
 --ckpt_save_interval 2 \
 --use_sub_data
 
