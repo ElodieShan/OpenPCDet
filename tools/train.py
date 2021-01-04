@@ -17,7 +17,7 @@ from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
 
-
+import numpy as np
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
@@ -44,6 +44,7 @@ def parse_config():
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
     parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
+    parser.add_argument('--cross_sample_prob', type=float, default=0.0, help='ori probility in cross_sample ')
 
     args = parser.parse_args()
 
@@ -59,6 +60,7 @@ def parse_config():
 
 def main():
     args, cfg = parse_config()
+
     if args.launcher == 'none':
         dist_train = False
         total_gpus = 1
@@ -92,6 +94,7 @@ def main():
     gpu_list = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ.keys() else 'ALL'
     logger.info('CUDA_VISIBLE_DEVICES=%s' % gpu_list)
 
+
     if dist_train:
         logger.info('total_batch_size: %d' % (total_gpus * args.batch_size))
     for key, val in vars(args).items():
@@ -113,7 +116,7 @@ def main():
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs
     )
-
+    
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -149,6 +152,8 @@ def main():
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
     print("args.use_sub_data:",args.use_sub_data)
+    print("args.cross_sample_prob:", args.cross_sample_prob)
+
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
@@ -157,6 +162,7 @@ def main():
         optimizer,
         train_loader,
         use_sub_data = args.use_sub_data,
+        cross_sample_prob= args.cross_sample_prob,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,

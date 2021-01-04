@@ -4,18 +4,24 @@ import copy
 import torch
 import tqdm
 from torch.nn.utils import clip_grad_norm_
+import numpy as np
 
 
 def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, 
-                    model_teacher=None, use_sub_data=False,
-                    tb_log=None, leave_pbar=False): # elodie teacher model/ use_sub_data
+                    model_teacher=None, use_sub_data=False, cross_sample_prob=0.0,
+                    tb_log=None, leave_pbar=False): # elodie teacher model/ use_sub_data, cross_sample_prob=0.0,
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
 
     if rank == 0:
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
 
+
+    if cross_sample_prob>0:
+        assert use_sub_data==False, 'use_sub_data is true, when cross_sample_prob>0 '
+    #     cross_sample_array = np.random.choice([False, True], total_it_each_epoch, p=[cross_sample_prob, 1-cross_sample_prob])
+    
     for cur_it in range(total_it_each_epoch):
         try:
             batch = next(dataloader_iter)
@@ -71,13 +77,16 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                         'batch_size': batch['batch_size'],
                         'sub_data':True,
                     }
-                    # batch_dict_sub = copy.deepcopy(batch)
-                    # batch_dict_sub['points'] = batch_dict_sub['16lines']['points_16lines']
-                    # batch_dict_sub['voxels'] = batch_dict_sub['16lines']['voxels']
-                    # batch_dict_sub['voxel_coords'] = batch_dict_sub['16lines']['voxel_coords']
-                    # batch_dict_sub['voxel_num_points'] = batch_dict_sub['16lines']['voxel_num_points']
-                    # batch_dict_sub.pop('16lines')
-                    # batch.pop('16lines')
+                elif cross_sample_prob>0:
+                    enable = np.random.choice([False, True], replace=False, p=[cross_sample_prob,1-cross_sample_prob])
+                    # enable = cross_sample_array[cur_it]
+                    if enable:
+                        batch['points'] = batch['16lines']['points_16lines']
+                        batch['voxels'] = batch['16lines']['voxels']
+                        batch['voxel_coords'] = batch['16lines']['voxel_coords']
+                        batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+                        batch.pop('16lines')  
+                    print("cur_it:",cur_it,"  enable:",enable,"  batch['points']:",batch['points'].shape)
                 else:
                     batch['points'] = batch['16lines']['points_16lines']
                     batch['voxels'] = batch['16lines']['voxels']
@@ -115,7 +124,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
 
 def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, 
-                model_teacher=None, use_sub_data=False, train_sampler=None,
+                model_teacher=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
                 merge_all_iters_to_one_epoch=False): # elodie teacher model
     accumulated_iter = start_iter
@@ -140,6 +149,7 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
                 model, optimizer, train_loader, model_func,
                 model_teacher=model_teacher,
                 use_sub_data=use_sub_data,
+                cross_sample_prob=cross_sample_prob,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
                 rank=rank, tbar=tbar, tb_log=tb_log,
