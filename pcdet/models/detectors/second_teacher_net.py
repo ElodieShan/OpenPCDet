@@ -8,16 +8,20 @@ class SECONDTEACHERNet(Detector3DTemplate):
         self.backbone_cfg = model_cfg['BACKBONE_3D']
         self.sub_loss_weight = model_cfg['DENSE_HEAD']['LOSS_CONFIG'].get('SUB_LOSS_WEIGHT', 1)
 
-    def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, batch_dict_sub=None):
-        if batch_dict_sub is not None:
+    def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, is_sub_model=False, batch_dict_sub=None):
+        if is_sub_model:
             for cur_module in self.module_list[:2]:
-                batch_dict_sub = cur_module(batch_dict_sub)
+                batch_dict = cur_module(batch_dict)    
+            return batch_dict
+            
+        if batch_dict_sub is not None:
+            # with torch.no_grad():
+            #     for cur_module in self.module_list[:2]:
+            #         batch_dict_sub = cur_module(batch_dict_sub)
             sub_multi_scale_3d_features = {}
             for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
                 sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
             batch_dict['sub_branch'] = sub_multi_scale_3d_features
-            # batch_dict['sub_multi_scale_3d_features'] =  batch_dict_sub['multi_scale_3d_features']
-            # batch_dict['sub_multi_scale_3d_features']['encoded_spconv_tensor'] = batch_dict_sub['encoded_spconv_tensor']
 
         # print("is_teacher:",is_teacher,"   'sub_multi_scale_3d_features' in batch:", ('sub_multi_scale_3d_features' in batch_dict), "  batch_dict_sub is None:",(batch_dict_sub is None))
         for cur_module in self.module_list[:-2]:
@@ -57,12 +61,6 @@ class SECONDTEACHERNet(Detector3DTemplate):
             recall_dicts.update(cls_dict)
             return pred_dicts, recall_dicts
 
-    def get_forword_result(self):
-        return self.dense_head.get_forward_ret_dict()
-
-    def get_pr_per_class(self):
-        self.dense_head.get_cls_pr_ret()
-
     def get_training_loss(self, teacher_ret_dict=None, student_data_dict=None, teacher_data_dict=None):
         disp_dict = {}
 
@@ -82,6 +80,5 @@ class SECONDTEACHERNet(Detector3DTemplate):
             **tb_dict
         }
         loss = loss_rpn + sub_loss_rpn*self.sub_loss_weight
-        print("self.sub_loss_weight:",self.sub_loss_weight)
         #disp_dict是空的?
         return loss, tb_dict, disp_dict

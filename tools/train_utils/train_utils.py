@@ -9,7 +9,7 @@ import numpy as np
 
 def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, 
-                    model_teacher=None, use_sub_data=False, cross_sample_prob=0.0,
+                    model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0,
                     tb_log=None, leave_pbar=False): # elodie teacher model/ use_sub_data, cross_sample_prob=0.0,
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
@@ -77,6 +77,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                         'batch_size': batch['batch_size'],
                         'sub_data':True,
                     }
+                    batch.pop('16lines')  
                 elif cross_sample_prob>0:
                     enable = np.random.choice([False, True], replace=False, p=[cross_sample_prob,1-cross_sample_prob])
                     # enable = cross_sample_array[cur_it]
@@ -86,14 +87,9 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                         batch['voxel_coords'] = batch['16lines']['voxel_coords']
                         batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
                         batch.pop('16lines')  
-                    print("cur_it:",cur_it,"  enable:",enable,"  batch['points']:",batch['points'].shape)
                 else:
-                    batch['points'] = batch['16lines']['points_16lines']
-                    batch['voxels'] = batch['16lines']['voxels']
-                    batch['voxel_coords'] = batch['16lines']['voxel_coords']
-                    batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
-                    batch.pop('16lines')
-            loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_sub=batch_dict_sub)
+                    batch.pop('16lines')            
+            loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_sub=batch_dict_sub, model_copy=model_copy)
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
         optimizer.step()
@@ -124,7 +120,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
 
 def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, 
-                model_teacher=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
+                model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
                 merge_all_iters_to_one_epoch=False): # elodie teacher model
     accumulated_iter = start_iter
@@ -148,6 +144,7 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
             accumulated_iter = train_one_epoch(
                 model, optimizer, train_loader, model_func,
                 model_teacher=model_teacher,
+                model_copy=model_copy,
                 use_sub_data=use_sub_data,
                 cross_sample_prob=cross_sample_prob,
                 lr_scheduler=cur_scheduler,

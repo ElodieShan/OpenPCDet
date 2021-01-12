@@ -5,14 +5,13 @@ DATA_CONFIG:
 
 
 MODEL:
-    NAME: SECONDTEACHERNet
+    NAME: SECONDNet
 
     VFE:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelBackBone8x_ATTEN
-        SUB_FEATURE_LIST: ['encoded_spconv_tensor']
+        NAME: VoxelBackBone8x
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -26,13 +25,6 @@ MODEL:
         NUM_FILTERS: [128, 256]
         UPSAMPLE_STRIDES: [1, 2]
         NUM_UPSAMPLE_FILTERS: [256, 256]
-
-    SUB_BACKBONE_2D:
-        NAME: SUB_BACKBONE_2D
-        INPUT_CHANNELS: 256
-
-    SUB_DENSE_HEAD:
-        NAME: AnchorHeadSingle
 
     DENSE_HEAD:
         NAME: AnchorHeadSingle
@@ -91,8 +83,7 @@ MODEL:
                 'dir_weight': 0.2,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
-            SUB_LOSS_WEIGHT: 0.1
-            
+
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
         SCORE_THRESH: 0.1

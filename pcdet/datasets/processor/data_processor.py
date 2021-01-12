@@ -168,8 +168,8 @@ class DataProcessor(object):
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
         assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
         align_points_switch = config.get('ALIGN_POINTS', False)
-        verticle_switch = config.get('VERTICAL_SAMPLE', 'True')
-        horizontal_switch = config.get('HORIZONTAL_SAMPLE', 'True')
+        verticle_switch = config.get('VERTICAL_SAMPLE', True)
+        horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
 
         points = data_dict['points']
         data_type = data_dict["metadata"]["data_type"]

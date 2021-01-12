@@ -8,7 +8,7 @@ import tqdm
 from pcdet.models import load_data_to_gpu
 from pcdet.utils import common_utils
 
-
+import copy
 def statistics_info(cfg, ret_dict, metric, disp_dict):
     for cur_thresh in cfg.MODEL.POST_PROCESSING.RECALL_THRESH_LIST:
         metric['recall_roi_%s' % str(cur_thresh)] += ret_dict.get('roi_%s' % str(cur_thresh), 0)
@@ -19,7 +19,7 @@ def statistics_info(cfg, ret_dict, metric, disp_dict):
         '(%d, %d) / %d' % (metric['recall_roi_%s' % str(min_thresh)], metric['recall_rcnn_%s' % str(min_thresh)], metric['gt_num'])
 
 
-def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, save_iou=False, use_sub_data=False):
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None, save_iou=False, use_sub_data=False, model_copy=None):
     result_dir.mkdir(parents=True, exist_ok=True)
 
     final_output_dir = result_dir / 'final_result' / 'data'
@@ -52,20 +52,28 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
+        print("3- model_sub is None  :",model_copy is None)
+
         if use_sub_data and "16lines" in batch_dict:
-            import copy            
-            batch_dict_sub = copy.deepcopy(batch_dict)
-            batch_dict_sub['points'] = batch_dict_sub['16lines']['points_16lines']
-            batch_dict_sub['voxels'] = batch_dict_sub['16lines']['voxels']
-            batch_dict_sub['voxel_coords'] = batch_dict_sub['16lines']['voxel_coords']
-            batch_dict_sub['voxel_num_points'] = batch_dict_sub['16lines']['voxel_num_points']
-            batch_dict_sub.pop('16lines')
+            batch_dict_sub = {
+                'voxels': copy.deepcopy(batch_dict['16lines']['voxels']),
+                'voxel_coords': copy.deepcopy(batch_dict['16lines']['voxel_coords']),
+                'voxel_num_points': copy.deepcopy(batch_dict['16lines']['voxel_num_points']),
+                'batch_size': batch_dict['batch_size'],
+                'sub_data':True,
+            }
             batch_dict.pop('16lines')
             load_data_to_gpu(batch_dict_sub)
+            if model_copy is not None:
+                with torch.no_grad():
+                    sub_data_dict = model_copy(batch_dict_sub, is_sub_model=True)
+
             load_data_to_gpu(batch_dict)
             with torch.no_grad():
-                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)
+                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=sub_data_dict)
         else:
+            if "16lines" in batch_dict:
+                batch_dict.pop('16lines')
             load_data_to_gpu(batch_dict)
             with torch.no_grad():
                 pred_dicts, ret_dict = model(batch_dict)

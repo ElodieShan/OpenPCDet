@@ -206,6 +206,9 @@ class Detector3DTemplate(nn.Module):
     def forward(self, **kwargs):
         raise NotImplementedError
 
+    def get_forword_result(self):
+        return self.dense_head.get_forward_ret_dict()
+        
     def post_processing(self, batch_dict):
         """
         Args:

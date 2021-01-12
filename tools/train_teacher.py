@@ -3,7 +3,8 @@ import datetime
 import glob
 import os
 from pathlib import Path
-from test import repeat_eval_ckpt
+from test_teacher import repeat_eval_ckpt
+import copy
 
 import torch
 import torch.distributed as dist
@@ -17,7 +18,11 @@ from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
 
-import numpy as np
+from pathlib import Path
+import yaml
+from easydict import EasyDict
+import torch.distributed as dist
+
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
@@ -34,7 +39,7 @@ def parse_config():
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-    parser.add_argument('--max_ckpt_save_num', type=int, default=40, help='max number of saved checkpoint')
+    parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
@@ -44,23 +49,38 @@ def parse_config():
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
     parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
-    parser.add_argument('--cross_sample_prob', type=float, default=0.0, help='ori probility in cross_sample ')
 
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
     cfg.TAG = Path(args.cfg_file).stem
     cfg.EXP_GROUP_PATH = '/'.join(args.cfg_file.split('/')[1:-1])  # remove 'cfgs' and 'xxxx.yaml'
-
+    
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs, cfg)
 
     return args, cfg
 
+def load_sub_model(args, cfg, data_set, logger, dist_test=False):
+    # ckpt_path = "/home/elodie/OpenPCDet/output/kitti_models/pv_rcnn_without_planes/default/ckpt/checkpoint_epoch_80.pth"
+    model_sub = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=data_set)
+
+    if args.sync_bn:
+        model_sub = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
+    # for param in model_sub.parameters():
+    #     param.requires_grad = False
+    model_sub.eval()
+    
+    # for param in model_sub.parameters():
+    #     param.requires_grad = False
+
+    model_sub.cuda() # load model to GPU
+    model_sub = nn.parallel.DistributedDataParallel(model_sub, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+    return model_sub
 
 def main():
     args, cfg = parse_config()
-
     if args.launcher == 'none':
         dist_train = False
         total_gpus = 1
@@ -69,6 +89,7 @@ def main():
             args.tcp_port, args.local_rank, backend='nccl'
         )
         dist_train = True
+
 
     if args.batch_size is None:
         args.batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
@@ -94,7 +115,6 @@ def main():
     gpu_list = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ.keys() else 'ALL'
     logger.info('CUDA_VISIBLE_DEVICES=%s' % gpu_list)
 
-
     if dist_train:
         logger.info('total_batch_size: %d' % (total_gpus * args.batch_size))
     for key, val in vars(args).items():
@@ -116,7 +136,14 @@ def main():
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=args.epochs
     )
-    
+    # load model sub elodise
+    if args.use_sub_data:
+        train_set_sub = copy.deepcopy(train_set)
+        cfg_sub = copy.deepcopy(cfg)
+        model_sub = load_sub_model(args, cfg_sub, train_set_sub, logger, dist_test=dist_train)
+    else:
+        model_sub = None
+
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -143,26 +170,27 @@ def main():
             last_epoch = start_epoch + 1
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
+    print("student device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()]:",[cfg.LOCAL_RANK % torch.cuda.device_count()])
+
     if dist_train:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()], find_unused_parameters=True) # find_unused_parameters elodie
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     logger.info(model)
 
     lr_scheduler, lr_warmup_scheduler = build_scheduler(
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
-    print("args.use_sub_data:",args.use_sub_data)
-    print("args.cross_sample_prob:", args.cross_sample_prob)
 
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
+
     train_model(
         model,
         optimizer,
         train_loader,
+        model_copy=model_sub,
         use_sub_data = args.use_sub_data,
-        cross_sample_prob= args.cross_sample_prob,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,
@@ -192,13 +220,12 @@ def main():
     )
     eval_output_dir = output_dir / 'eval' / 'eval_with_train'
     eval_output_dir.mkdir(parents=True, exist_ok=True)
-    # args.start_epoch = max(args.epochs - 10, 0)  # Only evaluate the last 10 epochs
-    args.start_epoch = max(args.epochs - 40, 0)  # elodie
-    
+    args.start_epoch = max(args.epochs - 10, 0)  # Only evaluate the last 10 epochs
+
     repeat_eval_ckpt(
         model.module if dist_train else model,
         test_loader, args, eval_output_dir, logger, ckpt_dir,
-        dist_test=dist_train
+        dist_test=dist_train, model_copy=model_sub
     )
     logger.info('**********************End evaluation %s/%s(%s)**********************' %
                 (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))

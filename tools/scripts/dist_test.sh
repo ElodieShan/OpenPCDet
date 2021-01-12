@@ -4,12 +4,12 @@ set -x
 NGPUS=$1
 PY_ARGS=${@:2}
 
-CFG_DIR=../output/kitti_models/second2/sub_branch-downsample
+CFG_DIR=../output/kitti_models/second2/test-copy_model_sub
 CFG_FILE=second2.yaml
 EPOCH=80
-TAG=test_ori_branch
+TAG=test_64lines_sub
 
-CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
+CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test_teacher.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
 --output_dir $CFG_DIR \
 --batch_size 2 \

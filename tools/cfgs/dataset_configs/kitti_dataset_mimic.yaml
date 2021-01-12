@@ -63,7 +63,7 @@ DATA_PROCESSOR:
       }
       REPLACE_ORI_POINTS: {
         'train': False,
-        'test': True
+        'test': False
       }
       # GET_INBOX_POINTS: True
 

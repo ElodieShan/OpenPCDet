@@ -635,8 +635,6 @@ class VoxelBackBone8x_ATTEN(nn.Module):
             nn.ReLU(),
         )
 
-        self.conv_out_atten = AttentionBlock(embed_dim=128, num_heads=4, max_seq_len=5*200*176, pos_shape=[5, 200, 176])
-
         self.num_point_features = 128
 
     def forward(self, batch_dict):
@@ -681,7 +679,6 @@ class VoxelBackBone8x_ATTEN(nn.Module):
                 spatial_shape=out.spatial_shape,
                 batch_size=batch_size
             )
-            # sub_out.features = self.conv_out_atten(out, sub_out, batch_size)
             
             batch_dict['sub_branch'].update({
                 'encoded_spconv_tensor': sub_out,
