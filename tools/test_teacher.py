@@ -61,7 +61,6 @@ def parse_config():
 
 def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False, save_iou=True, model_copy=None):
     # load checkpoint
-    print("2- model_sub is None  :",model_copy is None)
 
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
     model.cuda()
@@ -218,7 +217,6 @@ def main():
         model_sub = load_sub_model(args, cfg_sub, test_set_sub, logger)
     else:
         model_sub = None
-    print("1- model_sub is None  :",model_sub is None)
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
     with torch.no_grad():
         if args.eval_all:

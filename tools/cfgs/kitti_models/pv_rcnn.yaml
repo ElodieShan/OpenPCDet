@@ -144,7 +144,7 @@ MODEL:
                 NSAMPLE: [16, 32]
 
     POINT_HEAD:
-        NAME: PointHeadSimple
+        NAME: POINT_HEAD
         CLS_FC: [256, 256]
         CLASS_AGNOSTIC: True
         USE_POINT_FEATURES_BEFORE_FUSION: True

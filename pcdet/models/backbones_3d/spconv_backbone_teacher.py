@@ -127,7 +127,8 @@ class SparseBasicBlock_SA(spconv.SparseModule):
         voxel_size=None, 
         point_cloud_range=None,
         SA_cfg_src=None,
-        reset_extra_feature=False):
+        reset_extra_feature=False, 
+        remove_extra_feature=False):
         super(SparseBasicBlock_SA, self).__init__()
 
         assert norm_fn is not None
@@ -160,6 +161,7 @@ class SparseBasicBlock_SA(spconv.SparseModule):
                 pool_method='max_pool',
             )
         self.reset_extra_feature = reset_extra_feature
+        self.remove_extra_feature = remove_extra_feature
         # self.conv_sa = nn.Conv2d(
         #     planes*len(SA_cfg_src.POOL_RADIUS), planes, kernel_size=1)
         # )
@@ -206,12 +208,18 @@ class SparseBasicBlock_SA(spconv.SparseModule):
                 new_xyz_batch_cnt=new_xyz_batch_cnt,
                 features=out.features.contiguous(),
             )
-            same_indices_high, same_indices_low, diff_indices = mimic_utils.get_same_indices(out.indices.long(), self.sub_indices.long())
+            same_indices_high, same_indices_low, diff_indices = mimic_utils.get_same_indices(out.indices.long(), self.sub_indices.long(), return_diff_indices=True)
 
             if self.reset_extra_feature:
                 out.features[diff_indices] = 0
                 out.features[same_indices_high] = pooled_features[same_indices_low]
                 out.features = self.bn2(out.features)
+            elif self.remove_extra_feature:
+                out.indices = out.indices[same_indices_high]
+                out.features[same_indices_high] = pooled_features[same_indices_low]
+                out.features = out.features[same_indices_high]
+                out.features = self.bn2(out.features)
+                identity.features = identity.features[same_indices_high]
             else:
                 out.features[same_indices_high] = out.features.clone()[same_indices_high] + pooled_features[same_indices_low]
                 out.features = self.bn2(out.features)
@@ -994,6 +1002,119 @@ class VoxelBackBone8x_ATTEN_v3(nn.Module):
                     'x_conv4': x_conv4,
                 }
             })
+
+        if 'voxel_coords_inbox' in batch_dict:
+            batch_dict = get_voxel_coords_inbox_dict(batch_dict)
+        return batch_dict
+
+
+
+class SA_VoxelBackBone8x(nn.Module):
+    def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+        super().__init__()
+        self.model_cfg = model_cfg
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+
+        self.sparse_shape = grid_size[::-1] + [1, 0, 0]
+
+        self.conv_input = spconv.SparseSequential(
+            spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm0'),
+            norm_fn(16),
+            nn.ReLU(),
+        )
+
+        SA_cfg = self.model_cfg.SA_LAYER
+        reset_extra_feature = self.model_cfg.get('RESET_EXTRA_FEATURE', False)
+        remove_extra_feature = self.model_cfg.get('REMOVE_EXTRA_FEATURE', False)
+        self.sa_layer = SparseBasicBlock_SA(16, 16, norm_fn=norm_fn, indice_key='subm0',
+                SA_cfg_src=SA_cfg, voxel_size=kwargs['voxel_size'], 
+                point_cloud_range=kwargs['point_cloud_range'], 
+                reset_extra_feature=reset_extra_feature, remove_extra_feature=remove_extra_feature)
+
+        block = post_act_block
+
+        self.conv1 = spconv.SparseSequential(
+            block(16, 16, 3, norm_fn=norm_fn, padding=1, indice_key='subm1'),
+        )
+
+        self.conv2 = spconv.SparseSequential(
+            # [1600, 1408, 41] <- [800, 704, 21]
+            block(16, 32, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv2', conv_type='spconv'),
+            block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
+            block(32, 32, 3, norm_fn=norm_fn, padding=1, indice_key='subm2'),
+        )
+
+        self.conv3 = spconv.SparseSequential(
+            # [800, 704, 21] <- [400, 352, 11]
+            block(32, 64, 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv3', conv_type='spconv'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm3'),
+        )
+
+        self.conv4 = spconv.SparseSequential(
+            # [400, 352, 11] <- [200, 176, 5]
+            block(64, 64, 3, norm_fn=norm_fn, stride=2, padding=(0, 1, 1), indice_key='spconv4', conv_type='spconv'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'),
+            block(64, 64, 3, norm_fn=norm_fn, padding=1, indice_key='subm4'),
+        )
+
+        last_pad = 0
+        last_pad = self.model_cfg.get('last_pad', last_pad)
+        self.conv_out = spconv.SparseSequential(
+            # [200, 150, 5] -> [200, 150, 2]
+            spconv.SparseConv3d(64, 128, (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
+                                bias=False, indice_key='spconv_down2'),
+            norm_fn(128),
+            nn.ReLU(),
+        )
+        self.num_point_features = 128
+
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+
+        x = self.conv_input(input_sp_tensor)
+        self.sa_layer.sub_indices = batch_dict['sub_voxel_coords'].int()
+
+        x_input = self.sa_layer(x)
+
+        x_conv1 = self.conv1(x_input)
+        x_conv2 = self.conv2(x_conv1)
+        x_conv3 = self.conv3(x_conv2)
+        x_conv4 = self.conv4(x_conv3)
+
+        # [200, 176, 5] -> [200, 176, 2]
+        out = self.conv_out(x_conv4)
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8
+        })
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'x_input': x_input,
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }
+        })
 
         if 'voxel_coords_inbox' in batch_dict:
             batch_dict = get_voxel_coords_inbox_dict(batch_dict)

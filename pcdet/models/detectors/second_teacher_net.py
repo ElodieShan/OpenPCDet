@@ -7,6 +7,7 @@ class SECONDTEACHERNet(Detector3DTemplate):
         self.module_list = self.build_networks(build_sub_branch_net=True) # elodie
         self.backbone_cfg = model_cfg['BACKBONE_3D']
         self.sub_loss_weight = model_cfg['DENSE_HEAD']['LOSS_CONFIG'].get('SUB_LOSS_WEIGHT', 1)
+        self.output_sub_branch = model_cfg['POST_PROCESSING'].get('OUTPUT_SUB_BRANCH', False)
 
     def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, is_sub_model=False, batch_dict_sub=None):
         if is_sub_model:
@@ -46,14 +47,17 @@ class SECONDTEACHERNet(Detector3DTemplate):
             }
             return ret_dict, tb_dict, disp_dict
         else:
-            cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
-            pred_dicts, recall_dicts = self.post_processing(batch_dict)
+            if self.output_sub_branch:
+                print("output_sub_branch!")
+                cls_recall, cls_precision = self.sub_dense_head.get_cls_pr_dict()
+                pred_dicts, recall_dicts = self.post_processing(batch_dict['sub_branch'])
+            else:
+                cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
+                pred_dicts, recall_dicts = self.post_processing(batch_dict)
 
             # print("\nori:",self.dense_head.forward_ret_dict)
 
             # print("\nsub:",self.sub_dense_head.forward_ret_dict)
-            # cls_recall, cls_precision = self.sub_dense_head.get_cls_pr_dict()
-            # pred_dicts, recall_dicts = self.post_processing(batch_dict['sub_branch'])
             cls_dict = {
                 'cls_recall':cls_recall,
                 'cls_precision':cls_precision,

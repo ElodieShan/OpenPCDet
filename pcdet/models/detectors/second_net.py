@@ -6,6 +6,7 @@ class SECONDNet(Detector3DTemplate):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_list = self.build_networks()
         self.backbone_cfg = model_cfg['BACKBONE_3D']
+        self.remain_sub_voxel_coords = model_cfg['BACKBONE_3D'].get('SUB_VOXEL_COORDS',False)
 
     def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, is_sub_model=False, batch_dict_sub=None):
 
@@ -15,13 +16,13 @@ class SECONDNet(Detector3DTemplate):
             return batch_dict
 
         if batch_dict_sub is not None:
-            # with torch.no_grad():
-            #     for cur_module in self.module_list[:2]:
-            #         batch_dict_sub = cur_module(batch_dict_sub)
-            sub_multi_scale_3d_features = {}
-            for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
-                sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
-            batch_dict['sub_multi_scale_3d_features'] = sub_multi_scale_3d_features
+            if self.remain_sub_voxel_coords:
+                batch_dict['sub_voxel_coords'] = batch_dict_sub['voxel_coords']
+            else:
+                sub_multi_scale_3d_features = {}
+                for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
+                    sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
+                batch_dict['sub_multi_scale_3d_features'] = sub_multi_scale_3d_features
 
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)

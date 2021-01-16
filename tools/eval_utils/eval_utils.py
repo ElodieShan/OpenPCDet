@@ -52,7 +52,6 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
-        print("3- model_sub is None  :",model_copy is None)
 
         if use_sub_data and "16lines" in batch_dict:
             batch_dict_sub = {
@@ -68,9 +67,26 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
                 with torch.no_grad():
                     sub_data_dict = model_copy(batch_dict_sub, is_sub_model=True)
 
+                load_data_to_gpu(batch_dict)
+                with torch.no_grad():
+                    pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=sub_data_dict)
+            else:
+                load_data_to_gpu(batch_dict)
+                with torch.no_grad():
+                    pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)             
+        elif use_sub_data and "16lines" not in batch_dict:      
+            print("Eval - use_sub_data and 16lines not in batch_dict")
+            batch_dict_sub = {
+                'voxels': copy.deepcopy(batch_dict['voxels']),
+                'voxel_coords': copy.deepcopy(batch_dict['voxel_coords']),
+                'voxel_num_points': copy.deepcopy(batch_dict['voxel_num_points']),
+                'batch_size': batch_dict['batch_size'],
+                'sub_data':False,
+            }
+            load_data_to_gpu(batch_dict_sub)
             load_data_to_gpu(batch_dict)
             with torch.no_grad():
-                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=sub_data_dict)
+                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)     
         else:
             if "16lines" in batch_dict:
                 batch_dict.pop('16lines')

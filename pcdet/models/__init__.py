@@ -43,8 +43,11 @@ def model_fn_decorator():
                     sub_data_dict = model_copy(batch_dict_sub, is_sub_model=True)
                 ret_dict, tb_dict, disp_dict = model(batch_dict, batch_dict_sub=sub_data_dict)
             else:
-                ret_dict, tb_dict, disp_dict = model(batch_dict)
-
+                if batch_dict_sub is not None:
+                    load_data_to_gpu(batch_dict_sub)
+                    ret_dict, tb_dict, disp_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)
+                else:
+                    ret_dict, tb_dict, disp_dict = model(batch_dict)
 
 
         loss = ret_dict['loss'].mean()
