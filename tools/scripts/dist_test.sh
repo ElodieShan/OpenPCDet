@@ -4,10 +4,10 @@ set -x
 NGPUS=$1
 PY_ARGS=${@:2}
 
-CFG_DIR=../output/kitti_models/second_sa/SA_VoxelBackBone8x
-CFG_FILE=second_sa_16lines.yaml
+CFG_DIR=../output/kitti_models/pv_rcnn_mimic/t-pvrcnn-mimic
+CFG_FILE=pv_rcnn_mimic-64lines.yaml
 EPOCH=80
-TAG=test_on_16lines
+TAG=test_64lines
 
 CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
@@ -15,8 +15,7 @@ CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 te
 --batch_size 2 \
 --eval_tag $TAG \
 --tcp_port 18881 \
---ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth \
---use_sub_data
+--ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth 
 
 # --ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth \
 

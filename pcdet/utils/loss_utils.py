@@ -323,12 +323,16 @@ class MSE(nn.Module):
         return loss*weights
 
 class HintL2Loss(nn.Module):
-    def __init__(self, T=1.0):
+    def __init__(self, T=1.0, normalize=False):
         super(HintL2Loss, self).__init__()
         self.T = T
+        self.normalize = normalize
 
     def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
-
+        if self.normalize:
+            # print("input before:",input, input.shape)
+            input = F.normalize(input,p=2,dim=1)
+            target = F.normalize(target,p=2,dim=1)
         l2_hint_loss_src = torch.pow((input - target), 2)
         # print("input:",input.shape)
         # print("l2_hint_loss_src:", l2_hint_loss_src.sum(dim=-1).shape)

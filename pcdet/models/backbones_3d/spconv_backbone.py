@@ -51,6 +51,7 @@ def get_voxel_coords_inbox_dict(batch_dict):
     encoded_spconv_tensor = encoded_spconv_tensor.unique(dim=0)
 
     batch_dict['voxel_coords_inbox_dict'] = {
+                'x_input': x_conv1_coor_inbox,
                 'x_conv1': x_conv1_coor_inbox,
                 'x_conv2': x_conv2_coor_inbox,
                 'x_conv3': x_conv3_coor_inbox,
@@ -252,6 +253,7 @@ class VoxelBackBone8x(nn.Module):
         })
         batch_dict.update({
             'multi_scale_3d_features': {
+                'x_input': x,
                 'x_conv1': x_conv1,
                 'x_conv2': x_conv2,
                 'x_conv3': x_conv3,

@@ -191,10 +191,11 @@ class AnchorHeadTemplate(nn.Module):
 
         if self.hint_soft_loss_type is not None:
             hint_soft_loss_temperature = soft_losses_cfg.HINT_LOSS.get('TEMPERATURE', 1)
+            hint_normalize = soft_losses_cfg.HINT_LOSS.get('NORMALIZE', 0.5)
 
             self.add_module(
                 'soft_hint_loss_func',
-                getattr(loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature)
+                getattr(loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature, normalize=hint_normalize)
             )
             self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
             self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
@@ -851,7 +852,7 @@ class AnchorHeadTemplate(nn.Module):
 
         assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
         for i, feature_ in enumerate(self.hint_feature_list):
-            if feature_[:len('x_conv')] == 'x_conv' or feature_[-len('encoded_spconv_tensor'):] == 'encoded_spconv_tensor':
+            if feature_[:len('x_')] == 'x_' or feature_[-len('encoded_spconv_tensor'):] == 'encoded_spconv_tensor':
                 # print("feature_:",feature_)
                 if feature_ == 'encoded_spconv_tensor':
                     student_feature = student_data_dict[feature_]
@@ -870,7 +871,7 @@ class AnchorHeadTemplate(nn.Module):
                 # if self.seg_batch:
                 #     for i in range(batch_size):
                 #         student_feature_coor =
-                if self.feature_map_cfg is not None:
+                if self.feature_map_cfg is not None: # feature mapping 
                     if self.teacher_feature_map:
                         teacher_feature_shape = teacher_feature.features.shape
                         teacher_feature.features = getattr(self, 'teacher_map_'+feature_)(teacher_feature.features.view(1,teacher_feature_shape[0],teacher_feature_shape[1]).permute(0,2,1))
@@ -932,12 +933,9 @@ class AnchorHeadTemplate(nn.Module):
                         else:
                             hint_loss_src = hint_loss_src.mean()
                     else:
-                        teacher_gt_coor_index, student_gt_coor_index2, _ = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor[student_gt_coor_index])
-                    
-                        # for i in range(teacher_gt_coor_index.shape[0]):
-                            # print(student_feature.indices[student_gt_coor_index[student_gt_coor_index2[i]]],teacher_feature.indices[teacher_gt_coor_index[i]])
+                        teacher_gt_coor_index, student_gt_coor_index2, _ = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor[student_gt_coor_index])                    
                         hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_gt_coor_index[student_gt_coor_index2]], teacher_feature.features[teacher_gt_coor_index])
-                    
+
                         if self.seg_batch:
                             teacher_index = teacher_feature.indices[teacher_gt_coor_index]
                             hint_loss_src_batch = 0.0
@@ -995,15 +993,21 @@ class AnchorHeadTemplate(nn.Module):
 
                         hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_coor_index], teacher_feature.features[teacher_coor_index])
                         hint_loss_src = hint_loss_src.mean()
-                else:               
-                    st_gt_coor_unique = torch.cat((teacher_feature_coor,student_feature_coor),0).unique(sorted=True,return_inverse=True,return_counts=True, dim=0)# get the gt coordinates in teacher models 
-                    st_gt_inverse = st_gt_coor_unique[1][:teacher_feature_coor.shape[0]]
-                    st_gt_sorted, st_gt_indices = torch.sort(st_gt_inverse)
-                    st_gt_coor_indices = torch.zeros(st_gt_coor_unique[2].shape[0], dtype=torch.long).cuda()
-                    st_gt_coor_indices[st_gt_sorted] = st_gt_indices
-                    st_gt_mask = st_gt_coor_unique[2]==2
-                    st_gt_coor_index = st_gt_coor_indices[torch.arange(0,st_gt_coor_unique[2].shape[0])[st_gt_mask]]
-                    hint_loss_src = self.soft_hint_loss_func(student_feature.features,teacher_feature.features[st_gt_coor_index])
+                else:    
+                    teacher_coor_index, _, _, = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor, return_diff_indices=False, return_same_indices_low=False)           
+                    hint_loss_src = self.soft_hint_loss_func(student_feature.features,teacher_feature.features[teacher_coor_index])
+                    # for j in range(teacher_coor_index.shape[0]):
+                            # print(student_feature.indices[j],teacher_feature.indices[teacher_coor_index[j]])
+
+                    if self.seg_batch:
+                        teacher_index = teacher_feature.indices[teacher_coor_index]
+                        hint_loss_src_batch = 0.0
+                        for batch_id in range(batch_size):
+                            teacher_index_batch = teacher_index[:,0]==batch_id
+                            hint_loss_src_batch += (hint_loss_src[teacher_index_batch].sum()/teacher_index_batch.float().sum())
+                        hint_loss_src = hint_loss_src_batch/batch_size
+                    else:
+                        hint_loss_src = hint_loss_src.mean()
                 hint_loss_src = hint_loss_src.sum()
                 # print("hint_loss:",hint_loss)
             else:

@@ -32,6 +32,10 @@ def model_fn_decorator():
 
         if model_teacher is not None: # elodie
             load_data_to_gpu(batch_dict_teacher)
+            if batch_dict_sub is not None:
+                load_data_to_gpu(batch_dict_sub)
+            else:
+                batch_dict_sub=None
             with torch.no_grad():
                 teacher_ret_dict, teacher_data_dict = model_teacher(batch_dict_teacher, is_teacher=True, batch_dict_sub=batch_dict_sub)
                 

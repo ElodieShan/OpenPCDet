@@ -84,9 +84,17 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
                 'sub_data':False,
             }
             load_data_to_gpu(batch_dict_sub)
-            load_data_to_gpu(batch_dict)
-            with torch.no_grad():
-                pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)     
+            if model_copy is not None:
+                with torch.no_grad():
+                    sub_data_dict = model_copy(batch_dict_sub, is_sub_model=True)
+
+                load_data_to_gpu(batch_dict)
+                with torch.no_grad():
+                    pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=sub_data_dict)
+            else:
+                load_data_to_gpu(batch_dict)
+                with torch.no_grad():
+                    pred_dicts, ret_dict = model(batch_dict, batch_dict_sub=batch_dict_sub)      
         else:
             if "16lines" in batch_dict:
                 batch_dict.pop('16lines')
