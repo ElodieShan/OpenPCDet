@@ -51,6 +51,7 @@ def parse_config():
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
     parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
+    parser.add_argument('--cross_sample_prob', type=float, default=0.0, help='ori probility in cross_sample ')
 
     args = parser.parse_args()
 
@@ -201,7 +202,8 @@ def main():
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
-
+    print("args.use_sub_data:",args.use_sub_data)
+    print("args.cross_sample_prob:", args.cross_sample_prob)
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
@@ -212,6 +214,7 @@ def main():
         train_loader,
         model_teacher=model_teacher,
         use_sub_data = args.use_sub_data,
+        cross_sample_prob= args.cross_sample_prob,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,
