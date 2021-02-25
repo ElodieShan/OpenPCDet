@@ -41,7 +41,7 @@ def parse_config():
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-    parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
+    parser.add_argument('--max_ckpt_save_num', type=int, default=50, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
@@ -51,6 +51,7 @@ def parse_config():
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
 
     parser.add_argument('--use_sub_data', action='store_true', default=False, help='')
+    parser.add_argument('--cross_sample_prob', type=float, default=0.0, help='ori probility in cross_sample ')
 
     args = parser.parse_args()
 
@@ -202,6 +203,9 @@ def main():
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
 
+    print("args.use_sub_data:",args.use_sub_data)
+    print("args.cross_sample_prob:", args.cross_sample_prob)
+
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
@@ -211,6 +215,7 @@ def main():
         optimizer,
         train_loader,
         model_teacher=model_teacher,
+        cross_sample_prob= args.cross_sample_prob,
         use_sub_data = args.use_sub_data,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,

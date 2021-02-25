@@ -1,7 +1,7 @@
 CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
 
 DATA_CONFIG: 
-    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_mimic.yaml
+    _BASE_CONFIG_: /home/elodie/OpenPCDet/tools/cfgs/dataset_configs/kitti_dataset_mimic_align.yaml
 
 
 MODEL:
@@ -75,8 +75,12 @@ MODEL:
             NORM_BY_NUM_EXAMPLES: False
             MATCH_HEIGHT: False
             BOX_CODER: ResidualCoder
+            
+        # ADD_BACKGROUND_CLASS: True # elodie
 
         LOSS_CONFIG:
+            # CLS_LOSS_TYPE: SoftmaxFocalClassificationLoss2
+            # CLS_LOSS_ALPHA: 0.75
             LOSS_WEIGHTS: {
                 'cls_weight': 1.0,
                 'loc_weight': 2.0,
@@ -86,15 +90,27 @@ MODEL:
 
         SOFT_LOSS_CONFIG:
             CLS_LOSS: 
-                TYPE: WeightedCrossEntropyLoss
-                BETA: 2
-                # TYPE: SigmoidFocalClassificationLoss
-                # BETA: 0.5
+                TYPE: WeightedKLDivergenceLoss_v2
+                BETA: 20
+                ONLY_USE_TRUE_RET: True
+                SOURCE: ['GroundTruth', 'Student_F']
+                SOURCE_WEIGHTS: [1, 4]
 
             REG_LOSS:
                 TYPE: BoundedRegressionLoss
                 ALPHA: 3
                 MARGIN: 0.00001
+                
+            HINT_LOSS:
+                TYPE: HintL2Loss
+                GAMMA: 0.1
+                GT_ONLY: True
+                RANDOM_SELECT_BG: True
+                SEG_BATCH: True
+                NORMALIZE: True
+                FEATURE_LIST: ['x_conv1','x_conv2','x_conv3','x_conv4', 'encoded_spconv_tensor']
+                FEATURE_WEIGHTS: [1, 1, 2, 2, 10]
+
 
     POST_PROCESSING:
         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
@@ -112,11 +128,11 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 4
     NUM_EPOCHS: 80
 
     OPTIMIZER: adam_onecycle
-    LR: 0.0015
+    LR: 0.003
     WEIGHT_DECAY: 0.01
     MOMENTUM: 0.9
 

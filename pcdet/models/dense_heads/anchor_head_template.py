@@ -49,9 +49,9 @@ class AnchorHeadTemplate(nn.Module):
         self.model_cfg.SOFT_LOSS_CONFIG = self.model_cfg.get('SOFT_LOSS_CONFIG', None) # elodie soft loss
         self.cls_score_thred = self.model_cfg.LOSS_CONFIG.get('CLS_SCORE_THRED', cls_score_thred)
         
+        self.soft_loss_weights = {}
         if self.model_cfg.SOFT_LOSS_CONFIG is not None:
             self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
-            self.soft_loss_weights = {}
             self.mimic_cls_classes_use_only = False
             self.voxel_size = voxel_size
             self.point_cloud_range = point_cloud_range
@@ -148,7 +148,7 @@ class AnchorHeadTemplate(nn.Module):
                     'soft_cls_loss_func',
                     loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
                     )
-            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
+            elif self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'WeightedKLDivergenceLoss_v3', 'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                 weighted = soft_losses_cfg.CLS_LOSS.get('WEIGHTED', True)
                 self.mimic_cls_classes_use_only = soft_losses_cfg.CLS_LOSS.get('CLASS_USE_ONLY', False)
                 if self.mimic_cls_classes_use_only: # elodie
@@ -380,9 +380,10 @@ class AnchorHeadTemplate(nn.Module):
             'mimic/cls_preds_student_precision': cls_preds_student_precision.item(),
             'mimic/cls_preds_student_recall': cls_preds_student_recall.item(),
         }
+
+        self.soft_loss_weights['weights_gt'] = reg_weights
         
         if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
-            self.soft_loss_weights['weights_gt'] = reg_weights
             
             cls_preds_teacher = teacher_result['cls_preds']
             if self.mimic_cls_classes_use_only: # elodie
@@ -410,8 +411,9 @@ class AnchorHeadTemplate(nn.Module):
             # Teacher Preds Result: True Positive >0, True Negtive=0, False Positive <0
             cls_preds_teacher_ret = torch.where(cls_preds_teacher_maxarg==cls_targets.long(), \
                     cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg, -1, dtype=cls_preds_teacher_maxarg.dtype))
-            cls_preds_teacher_ret = torch.where(cls_preds_teacher_maxarg==0, \
-                    cls_preds_teacher_maxarg, cls_preds_teacher_ret)
+            # Bug20210201
+            # cls_preds_teacher_ret2 = torch.where(cls_preds_teacher_maxarg==0, \
+                    # cls_preds_teacher_maxarg, cls_preds_teacher_ret)
 
             # Teacher Preds False Positive with high confidence >0.8 including true positive > thred
             cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_max>0.8,\
@@ -501,7 +503,7 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
-                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
+                if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'WeightedKLDivergenceLoss_v3',  'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                     if self.mimic_cls_classes_use_only: # elodie
                         weights = weights.view(batch_size, -1, self.class_index.shape[0])
                         cls_soft_loss = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights)
@@ -691,15 +693,15 @@ class AnchorHeadTemplate(nn.Module):
                     if src == "Student_FP":
                         weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
                     if src == "Student_FN":
-                        weights += src_weights*self.soft_loss_weights['weights_sfn']
+                        weights += src_loss_weights*self.soft_loss_weights['weights_sfn']
                     if src == "Student_F":
-                        weights += src_weights*self.soft_loss_weights['weights_sf']
+                        weights += src_loss_weights*self.soft_loss_weights['weights_sf']
                     if src == "GroundTruth":
                         weights += src_loss_weights*self.soft_loss_weights['weights_gt']
             else:
                 weights = None
 
-            if self.reg_soft_loss_type == 'BoundedRegressionLoss':
+            if self.reg_soft_loss_type in ['BoundedRegressionLoss', 'BoundedRegressionLoss_v2']:
                 box_preds_teacher = teacher_result['box_preds']
                 box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
                 box_preds_teacher = box_preds_teacher.view(batch_size, -1,
@@ -842,9 +844,9 @@ class AnchorHeadTemplate(nn.Module):
                 if src == "Student_FP":
                     weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
                 if src == "Student_FN":
-                    weights += src_weights*self.soft_loss_weights['weights_sfn']
+                    weights += src_loss_weights*self.soft_loss_weights['weights_sfn']
                 if src == "Student_F":
-                    weights += src_weights*self.soft_loss_weights['weights_sf']
+                    weights += src_loss_weights*self.soft_loss_weights['weights_sf']
                 if src == "GroundTruth":
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
         

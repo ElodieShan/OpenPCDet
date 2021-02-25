@@ -20,12 +20,26 @@ PY_ARGS=${@:2}
 # --ckpt_save_interval 2 \
 # --tcp_port 18875
 
-CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+CUDA_VISIBLE_DEVICES=2,3 python3 -m torch.distributed.launch \
 --nproc_per_node=2 train.py --launcher pytorch \
---cfg_file cfgs/kitti_models/pv_rcnn_64lines.yaml \
---extra_tag 64lines-w-planes-batch2 \
---ckpt_save_interval 2 \
---tcp_port 18875
+--cfg_file cfgs/kitti_models/second_16lines_tp16_v3-1.yaml \
+--ckpt ../output/kitti_models/second_16lines_tp16_v3-mimic2/TPv3-80epoch-batch4-kl20_gt10_sfp40_onlyt-regv2_1_m1e-5_gt_1-2/ckpt/checkpoint_epoch_51.pth \
+--tcp_port 18898 \
+--extra_tag  TPv3-30epoch-batch4-resume_by_kl20_gt10_sfp40_onlyt-regv2_1_m1e-5_gt_1-2
+
+CUDA_VISIBLE_DEVICES=6,7 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/kitti_models/second_16lines_tp16_v3-1.yaml \
+--ckpt ../output/kitti_models/second_16lines_tp16_v3-mimic2/TPv3-80epoch-batch4-kl20_gt10_sfp40_onlyt-regv2_1_m1e-5_gt_1-2/ckpt/checkpoint_epoch_51.pth \
+--tcp_port 18898 \
+--extra_tag  TPv3-30epoch-batch4-resume_by_kl20_gt10_sfp40_onlyt-regv2_1_m1e-5_gt_1-2-2
+
+# CUDA_VISIBLE_DEVICES=2,3 python3 -m torch.distributed.launch \
+# --nproc_per_node=2 train.py --launcher pytorch \
+# --cfg_file cfgs/kitti_models/second_16lines_tp16_v2.yaml \
+# --extra_tag 16lines-w-planes-batch4 \
+# --ckpt_save_interval 2 \
+# --tcp_port 18875
 
 
 

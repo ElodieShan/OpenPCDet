@@ -4,18 +4,22 @@ set -x
 NGPUS=$1
 PY_ARGS=${@:2}
 
-CFG_DIR=../output/kitti_models/pv_rcnn_mimic/t-pvrcnn-mimic
-CFG_FILE=pv_rcnn_mimic-64lines.yaml
+CFG_DIR=../output/kitti_models/second_16lines_tp16_v3-1/TPv3-30epoch-batch4-resume_by_kl20_gt10_sfp40_onlyt-regv2_1_m1e-5_gt_1-2
+CFG_FILE=second_16lines_tp16_v3-1.yaml
 EPOCH=80
-TAG=test_64lines
+TAG=test_16lines_batch4
 
-CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
+CUDA_VISIBLE_DEVICES=5 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
 --output_dir $CFG_DIR \
---batch_size 2 \
+--batch_size 4 \
 --eval_tag $TAG \
 --tcp_port 18881 \
 --ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth 
+
+# --ckpt ../output/kitti_models/pointpillar/demo/pointpillar_7728.pth
+
+
 
 # --ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth \
 

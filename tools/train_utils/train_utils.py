@@ -48,18 +48,30 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
             # print("\nbatch origin:\n",batch)
             batch_teacher = copy.deepcopy(batch)
             batch_teacher.pop('16lines')
-            batch['points'] = batch['16lines']['points_16lines']
-            batch['voxels'] = batch['16lines']['voxels']
-            batch['voxel_coords'] = batch['16lines']['voxel_coords']
-            batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+
+            if cross_sample_prob>0:
+                enable = np.random.choice([False, True], replace=False, p=[cross_sample_prob,1-cross_sample_prob])
+                if enable:
+                    batch['points'] = batch['16lines']['points_16lines']
+                    batch['voxels'] = batch['16lines']['voxels']
+                    batch['voxel_coords'] = batch['16lines']['voxel_coords']
+                    batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+            else:
+                batch['points'] = batch['16lines']['points_16lines']
+                batch['voxels'] = batch['16lines']['voxels']
+                batch['voxel_coords'] = batch['16lines']['voxel_coords']
+                batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
+
             if 'voxel_coords_inbox' in batch['16lines']:
                 batch['voxel_coords_inbox'] = batch['16lines']['voxel_coords_inbox']
+
             batch.pop('16lines')
+
             if use_sub_data:
                 batch_dict_sub = {
-                    'voxels': copy.deepcopy(batch['voxels']),
-                    'voxel_coords': copy.deepcopy(batch['voxel_coords']),
-                    'voxel_num_points': copy.deepcopy(batch['voxel_num_points']),
+                    'voxels': copy.deepcopy(batch['16lines']['voxels']),
+                    'voxel_coords': copy.deepcopy(batch['16lines']['voxel_coords']),
+                    'voxel_num_points': copy.deepcopy(batch['16lines']['voxel_num_points']),
                     'batch_size': batch['batch_size'],
                     'sub_data':True,
                 }
