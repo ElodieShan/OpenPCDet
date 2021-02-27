@@ -16,12 +16,10 @@ class SECONDTEACHERNet(Detector3DTemplate):
             return batch_dict
             
         if batch_dict_sub is not None:
-            # with torch.no_grad():
-            #     for cur_module in self.module_list[:2]:
-            #         batch_dict_sub = cur_module(batch_dict_sub)
             sub_multi_scale_3d_features = {}
             for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
                 sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
+
             batch_dict['sub_branch'] = sub_multi_scale_3d_features
 
         # print("is_teacher:",is_teacher,"   'sub_multi_scale_3d_features' in batch:", ('sub_multi_scale_3d_features' in batch_dict), "  batch_dict_sub is None:",(batch_dict_sub is None))
@@ -31,7 +29,6 @@ class SECONDTEACHERNet(Detector3DTemplate):
         if 'sub_branch' in batch_dict:
             batch_dict['sub_branch']['batch_size'] = batch_dict['batch_size']
             batch_dict['sub_branch']['gt_boxes'] = batch_dict['gt_boxes']
-
             for cur_module in self.module_list[-2:]:
                 batch_dict['sub_branch'] = cur_module(batch_dict['sub_branch'])
 

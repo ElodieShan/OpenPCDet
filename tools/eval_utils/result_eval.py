@@ -69,6 +69,24 @@ def load_dataset_from_openpcdet(config_path, train_mode=True, logger=None, log_d
     )
     return dataset, dataset.dataset_cfg.DATASET, cfg, logger
 
+# precision[3,41]/[3,11] easy,mod,hard
+def plot_pr_curve(precision, out_pic_fig_path):
+    plt.figure()
+    recall = np.linspace(0,1,41)
+    plt.plot(recall, precision['easy'], color='darkorange', label='Easy') 
+    plt.plot(recall, precision['mod'], color='b', label='Mod') 
+    plt.plot(recall, precision['hard'], color='g', label='Hard') 
+
+    plt.xlabel('Recall', fontsize=16)
+    plt.ylabel('Precision', fontsize=16)
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.legend()
+    plt.tight_layout()
+    # plt.show()
+    plt.savefig(out_pic_fig_path)
+    plt.clf() 
+
 def plot_recall_iou(recall, precision, overlaps, out_pic_fig_path):
     pic_list = ['Easy', 'Mod', 'Hard']
     color = ['b','g','y','r']
@@ -99,6 +117,14 @@ def plot_recall_iou(recall, precision, overlaps, out_pic_fig_path):
     fig.savefig(out_pic_fig_path)
     plt.clf() 
 
+def convert_matrix2str(mat):
+    str_mat = "["
+    for i in mat:
+        str_mat += str(i)
+        str_mat += ", "
+    str_mat = str_mat[:-2] + ']'
+    return str_mat
+    
 if __name__ == '__main__':
     import sys
     if sys.argv.__len__() > 1:
@@ -163,6 +189,32 @@ if __name__ == '__main__':
 
             print(result_str)
 
+            if 'PR_detail_dict' in result_dict:
+                PR_detail_dict_3d = result_dict['PR_detail_dict']['3d']
+                print("Plot Car PR Curve")
+                precision = {
+                    'easy':PR_detail_dict_3d['precision'][0,0,0],
+                    'mod':PR_detail_dict_3d['precision'][0,1,0],
+                    'hard':PR_detail_dict_3d['precision'][0,2,0]
+                }
+                plot_pr_curve(precision,
+                              out_pic_fig_path = config_dir + "/result_eval/pr-curve.png")
+                logger.info("\n==================== Precision & Recall Curve Data =================")
+                str_precision = str(PR_detail_dict_3d['precision'][0,0,0])
+                logger.info("\n car 3d precision R40@0.7 - easy:\n %s"%(str(PR_detail_dict_3d['precision'][0,0,0])))
+                logger.info("\n car 3d precision R40@0.7 - mod:\n %s"%(str(PR_detail_dict_3d['precision'][0,1,0])))
+                logger.info("\n car 3d precision R40@0.7 - hard:\n %s"%(str(PR_detail_dict_3d['precision'][0,2,0])))
+                logger.info("\n pedestrian 3d precision R40@0.5 - easy:\n %s"%(str(PR_detail_dict_3d['precision'][1,0,0])))
+                logger.info("\n pedestrian 3d precision R40@0.5 - mod:\n %s"%(str(PR_detail_dict_3d['precision'][1,1,0])))
+                logger.info("\n pedestrian 3d precision R40@0.5 - hard:\n %s"%(str(PR_detail_dict_3d['precision'][1,2,0])))
+                logger.info("\n cyclist 3d precision R40@0.5 - easy:\n %s"%(str(PR_detail_dict_3d['precision'][2,0,0])))
+                logger.info("\n cyclist 3d precision R40@0.5 - mod:\n %s"%(str(PR_detail_dict_3d['precision'][2,1,0])))
+                logger.info("\n cyclist 3d precision R40@0.5 - hard:\n %s"%(str(PR_detail_dict_3d['precision'][2,2,0])))
+
+            # save result_dict
+            with open(result_pkl_file.replace('result.pkl','result_dict.pkl'),"wb") as f:
+                pickle.dump(result_dict,f)
+            
             # elodie - ignore_class
             _, result_dict_ignore_class = dataset.evaluation(
                 det_annos, dataset.class_names,

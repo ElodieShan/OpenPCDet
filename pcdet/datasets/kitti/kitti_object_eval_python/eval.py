@@ -573,6 +573,7 @@ def eval_class(gt_annos,
                             compute_aos=compute_aos)
                     idx += num_part
                     total_gt_num_all += sum(total_gt_num[idx:idx + num_part])
+
                 for i in range(len(thresholds)):
                     recall[m, l, k, i] = pr[i, 0] / (pr[i, 0] + pr[i, 2])
                     precision[m, l, k, i] = pr[i, 0] / (pr[i, 0] + pr[i, 1])
@@ -626,6 +627,8 @@ def get_mAP(prec):
     return sums / 11 * 100
 
 
+# mAP result: [num_class, num_diff, num_minoverlap]
+# num_minoverlap: 0.7, 0.5, 0.0, 0.2, 0.4
 def get_mAP_R40(prec):
     sums = 0
     for i in range(1, prec.shape[-1]):
@@ -657,9 +660,13 @@ def do_eval(gt_annos,
     # ret: shape (3, 3, 2, 41)
     mAP_bbox = get_mAP(ret["precision"])
     mAP_bbox_R40 = get_mAP_R40(ret["precision"])
+    
 
     if PR_detail_dict is not None:
-        PR_detail_dict['bbox'] = ret['precision']
+        PR_detail_dict['bbox'] = {
+                'recall':ret['recall'],
+                'precision':ret['precision']
+            }
 
     mAP_aos = mAP_aos_R40 = None
     if compute_aos:
@@ -675,7 +682,10 @@ def do_eval(gt_annos,
     mAP_bev_R40 = get_mAP_R40(ret["precision"])
 
     if PR_detail_dict is not None:
-        PR_detail_dict['bev'] = ret['precision']
+        PR_detail_dict['bev'] = {
+                'recall':ret['recall'],
+                'precision':ret['precision']
+            }
 
     ret, cls_ret_dict = eval_class(gt_annos, dt_annos, current_classes, difficultys, 2,
                      min_overlaps)
@@ -683,7 +693,10 @@ def do_eval(gt_annos,
     mAP_3d = get_mAP(ret["precision"])
     mAP_3d_R40 = get_mAP_R40(ret["precision"])
     if PR_detail_dict is not None:
-        PR_detail_dict['3d'] = ret['precision']
+        PR_detail_dict['3d'] = {
+                'recall':ret['recall'],
+                'precision':ret['precision']
+            }
     return mAP_bbox, mAP_bev, mAP_3d, mAP_aos, mAP_bbox_R40, mAP_bev_R40, mAP_3d_R40, mAP_aos_R40, cls_ret_dict
 
 
@@ -827,6 +840,8 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
 
     if cls_ret_dict is not None:
         ret_dict['min_thresh_ret'] = cls_ret_dict
+    if PR_detail_dict is not None:
+        ret_dict['PR_detail_dict'] = PR_detail_dict
     return result, ret_dict
 
 

@@ -73,6 +73,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                     'voxel_coords': copy.deepcopy(batch['16lines']['voxel_coords']),
                     'voxel_num_points': copy.deepcopy(batch['16lines']['voxel_num_points']),
                     'batch_size': batch['batch_size'],
+                    'gt_boxes': batch['gt_boxes'],
                     'sub_data':True,
                 }
                 loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher, batch_dict_sub=batch_dict_sub)

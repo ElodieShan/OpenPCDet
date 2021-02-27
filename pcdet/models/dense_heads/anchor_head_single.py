@@ -56,15 +56,12 @@ class AnchorHeadSingle(AnchorHeadTemplate):
         else:
             dir_cls_preds = None
 
-        # if self.training:  #elodie
-            # targets_dict = self.assign_targets(
-            #     gt_boxes=data_dict['gt_boxes']
-            # )
-            # self.forward_ret_dict.update(targets_dict)
-        targets_dict = self.assign_targets(
+        # if self.training:
+        if self.training or 'gt_boxes' in data_dict:  #elodie
+            targets_dict = self.assign_targets(
                 gt_boxes=data_dict['gt_boxes']
-        )
-        self.forward_ret_dict.update(targets_dict)
+            )
+            self.forward_ret_dict.update(targets_dict)
 
         if not self.training or self.predict_boxes_when_training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

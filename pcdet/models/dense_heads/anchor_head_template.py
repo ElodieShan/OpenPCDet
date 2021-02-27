@@ -996,8 +996,8 @@ class AnchorHeadTemplate(nn.Module):
                         hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_coor_index], teacher_feature.features[teacher_coor_index])
                         hint_loss_src = hint_loss_src.mean()
                 else:    
-                    teacher_coor_index, _, _, = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor, return_diff_indices=False, return_same_indices_low=False)           
-                    hint_loss_src = self.soft_hint_loss_func(student_feature.features,teacher_feature.features[teacher_coor_index])
+                    teacher_coor_index, student_coor_index, _, = mimic_utils.get_same_indices(teacher_feature_coor, student_feature_coor, return_diff_indices=False, return_same_indices_low=True)           
+                    hint_loss_src = self.soft_hint_loss_func(student_feature.features[student_coor_index],teacher_feature.features[teacher_coor_index])
                     # for j in range(teacher_coor_index.shape[0]):
                             # print(student_feature.indices[j],teacher_feature.indices[teacher_coor_index[j]])
 
@@ -1010,8 +1010,8 @@ class AnchorHeadTemplate(nn.Module):
                         hint_loss_src = hint_loss_src_batch/batch_size
                     else:
                         hint_loss_src = hint_loss_src.mean()
+
                 hint_loss_src = hint_loss_src.sum()
-                # print("hint_loss:",hint_loss)
             else:
                 student_feature = student_data_dict[feature_]
                 teacher_feature = teacher_data_dict[feature_]
@@ -1028,6 +1028,8 @@ class AnchorHeadTemplate(nn.Module):
                     hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
                 else:
                     hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
+                    hint_loss_src = hint_loss_src.mean(dim=-1)
+
                 hint_loss_src = hint_loss_src.sum()/batch_size
 
             # frame_id =  student_data_dict['frame_id'][0]

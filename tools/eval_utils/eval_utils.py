@@ -194,7 +194,14 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     ret_dict.update(result_dict)
 
     logger.info('Result is save to %s' % result_dir)
-
+    
+    # save result dict
+    with open(result_dir / 'result_dict.pkl',"wb") as f:
+        pickle.dump(ret_dict,f)
+    
+    if 'PR_detail_dict' in ret_dict:
+        ret_dict.pop('PR_detail_dict')
+    
     # ignore_class
     _, result_dict_ignore_class = dataset.evaluation(
         det_annos, class_names,

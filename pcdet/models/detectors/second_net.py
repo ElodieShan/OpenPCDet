@@ -39,13 +39,14 @@ class SECONDNet(Detector3DTemplate):
             }
             return ret_dict, tb_dict, disp_dict
         else:
-            cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
-            cls_dict = {
-                'cls_recall':cls_recall,
-                'cls_precision':cls_precision,
-            }
-            recall_dicts.update(cls_dict)
+            if 'gt_boxes' in batch_dict:
+                cls_recall, cls_precision = self.dense_head.get_cls_pr_dict()
+                cls_dict = {
+                    'cls_recall':cls_recall,
+                    'cls_precision':cls_precision,
+                }
+                recall_dicts.update(cls_dict)
             return pred_dicts, recall_dicts
 
     def get_training_loss(self, teacher_ret_dict=None, student_data_dict=None, teacher_data_dict=None):

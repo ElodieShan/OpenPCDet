@@ -345,8 +345,9 @@ class KittiDataset(DatasetTemplate):
                     det_anno_name.append(name)
                 det_anno['name'] = np.array(det_anno_name) 
 
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True)
+        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True, PR_detail_dict={})
         
+
         return ap_result_str, ap_dict
 
     def get_detobject_iou(self, det_annos, **kwargs):
