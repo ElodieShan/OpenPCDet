@@ -285,3 +285,16 @@ def boxes3d_nearest_bev_iou(boxes_a, boxes_b):
     boxes_bev_b = boxes3d_lidar_to_aligned_bev_boxes(boxes_b)
 
     return boxes_iou_normal(boxes_bev_a, boxes_bev_b)
+
+# from audi dataset tutorial
+def skew_sym_matrix(u):
+    return np.array([[    0, -u[2],  u[1]], 
+                     [ u[2],     0, -u[0]], 
+                     [-u[1],  u[0],    0]])
+
+def axis_angle_to_rotation_mat(axis, angle):
+    return np.cos(angle) * np.eye(3) + \
+        np.sin(angle) * skew_sym_matrix(axis) + \
+        (1 - np.cos(angle)) * np.outer(axis, axis)
+
+

@@ -8,17 +8,9 @@ PY_ARGS=${@:2}
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 --nproc_per_node=2 train_teacher.py --launcher pytorch \
---cfg_file cfgs/kitti_models/sub_branch.yaml \
---extra_tag 21022605-VLP-80epoch-batch2-sub_branch_mask20 \
+--cfg_file cfgs/audi_models/second_16lines_audi.yaml \
+--extra_tag 21030404-Audi-80epoch-batch4 \
 --ckpt_save_interval 2 \
---use_sub_data
-
-CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
---nproc_per_node=2 train_teacher.py --launcher pytorch \
---cfg_file cfgs/kitti_models/sub_branch.yaml \
---extra_tag 21022606-VLP-80epoch-batch2-sub_branch_mask20-2 \
---ckpt_save_interval 2 \
---use_sub_data
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 # --nproc_per_node=2 train.py --launcher pytorch \

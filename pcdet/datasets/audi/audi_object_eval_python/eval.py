@@ -34,13 +34,10 @@ def get_thresholds(scores: np.ndarray, num_gt, num_sample_pts=41):
 
 
 def clean_data(gt_anno, dt_anno, current_class, difficulty):
-    CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck']
-    MIN_HEIGHT = [40, 25, 25]
+    CLASS_NAMES = ['car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'truck', 'vansuv', 'bus']
+    MIN_HEIGHT = [-1, -1, -1]
     MAX_OCCLUSION = [0, 1, 2]
-    MAX_TRUNCATION = [0.15, 0.3, 0.5]
-    # MIN_HEIGHT = [-1, -1, -1]
-    # MAX_OCCLUSION = [0, 1, 2]
-    # MAX_TRUNCATION = [0.15, 0.3, 0.5]
+    MAX_TRUNCATION = [0, 1, 2]
     dc_bboxes, ignored_gt, ignored_dt = [], [], []
     current_cls_name = CLASS_NAMES[current_class].lower()
     num_gt = len(gt_anno["name"])
@@ -56,7 +53,8 @@ def clean_data(gt_anno, dt_anno, current_class, difficulty):
         elif (current_cls_name == "Pedestrian".lower()
               and "Person_sitting".lower() == gt_name):
             valid_class = 0
-        elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name):
+        elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name and 'VanSUV'.lower() == gt_name):
+        # elif (current_cls_name == "Car".lower() and "Van".lower() == gt_name and "Bus".lower() == gt_name and "VanSUV".lower() == gt_name):
             valid_class = 0
         else:
             valid_class = -1
@@ -657,27 +655,29 @@ def do_eval(gt_annos,
             compute_cls_ap=False):
     # min_overlaps: [num_minoverlap, metric, num_class]
     difficultys = [0, 1, 2]
-    ret, _ = eval_class(gt_annos, dt_annos, current_classes, difficultys, 0,
-                     min_overlaps, compute_aos)
+    # ret, _ = eval_class(gt_annos, dt_annos, current_classes, difficultys, 0,
+    #                  min_overlaps, compute_aos)
     # ret: [num_class, num_diff, num_minoverlap, num_sample_points(R40)]
     # ret: shape (3, 3, 2, 41)
-    mAP_bbox = get_mAP(ret["precision"])
-    mAP_bbox_R40 = get_mAP_R40(ret["precision"])
-    
+    # mAP_bbox = get_mAP(ret["precision"])
+    # mAP_bbox_R40 = get_mAP_R40(ret["precision"])
+    mAP_bbox = None
+    mAP_bbox_R40 = None
 
-    if PR_detail_dict is not None:
-        PR_detail_dict['bbox'] = {
-                'recall':ret['recall'],
-                'precision':ret['precision']
-            }
+    # if PR_detail_dict is not None:
+    #     PR_detail_dict['bbox'] = {
+    #             'recall':ret['recall'],
+    #             'precision':ret['precision']
+    #         }
+    mAP_aos = None
+    mAP_aos_R40 = None
+    # mAP_aos = mAP_aos_R40 = None
+    # if compute_aos:
+    #     mAP_aos = get_mAP(ret["orientation"])
+    #     mAP_aos_R40 = get_mAP_R40(ret["orientation"])
 
-    mAP_aos = mAP_aos_R40 = None
-    if compute_aos:
-        mAP_aos = get_mAP(ret["orientation"])
-        mAP_aos_R40 = get_mAP_R40(ret["orientation"])
-
-        if PR_detail_dict is not None:
-            PR_detail_dict['aos'] = ret['orientation']
+    #     if PR_detail_dict is not None:
+    #         PR_detail_dict['aos'] = ret['orientation']
 
     ret, _ = eval_class(gt_annos, dt_annos, current_classes, difficultys, 1,
                      min_overlaps)
@@ -780,9 +780,9 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
             result += print_str(
                 (f"{class_to_name[curcls]} "
                  "AP@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
-            result += print_str((f"bbox AP:{mAPbbox[j, 0, i]:.4f}, "
-                                 f"{mAPbbox[j, 1, i]:.4f}, "
-                                 f"{mAPbbox[j, 2, i]:.4f}"))
+            # result += print_str((f"bbox AP:{mAPbbox[j, 0, i]:.4f}, "
+            #                      f"{mAPbbox[j, 1, i]:.4f}, "
+            #                      f"{mAPbbox[j, 2, i]:.4f}"))
             result += print_str((f"bev  AP:{mAPbev[j, 0, i]:.4f}, "
                                  f"{mAPbev[j, 1, i]:.4f}, "
                                  f"{mAPbev[j, 2, i]:.4f}"))
@@ -790,10 +790,10 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
                                  f"{mAP3d[j, 1, i]:.4f}, "
                                  f"{mAP3d[j, 2, i]:.4f}"))
 
-            if compute_aos:
-                result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
-                                     f"{mAPaos[j, 1, i]:.2f}, "
-                                     f"{mAPaos[j, 2, i]:.2f}"))
+            # if compute_aos:
+            #     result += print_str((f"aos  AP:{mAPaos[j, 0, i]:.2f}, "
+            #                          f"{mAPaos[j, 1, i]:.2f}, "
+            #                          f"{mAPaos[j, 2, i]:.2f}"))
                 # if i == 0:
                    # ret_dict['%s_aos/easy' % class_to_name[curcls]] = mAPaos[j, 0, 0]
                    # ret_dict['%s_aos/moderate' % class_to_name[curcls]] = mAPaos[j, 1, 0]
@@ -802,23 +802,23 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
             result += print_str(
                 (f"{class_to_name[curcls]} "
                  "AP_R40@{:.2f}, {:.2f}, {:.2f}:".format(*min_overlaps[i, :, j])))
-            result += print_str((f"bbox AP:{mAPbbox_R40[j, 0, i]:.4f}, "
-                                 f"{mAPbbox_R40[j, 1, i]:.4f}, "
-                                 f"{mAPbbox_R40[j, 2, i]:.4f}"))
+            # result += print_str((f"bbox AP:{mAPbbox_R40[j, 0, i]:.4f}, "
+            #                      f"{mAPbbox_R40[j, 1, i]:.4f}, "
+            #                      f"{mAPbbox_R40[j, 2, i]:.4f}"))
             result += print_str((f"bev  AP:{mAPbev_R40[j, 0, i]:.4f}, "
                                  f"{mAPbev_R40[j, 1, i]:.4f}, "
                                  f"{mAPbev_R40[j, 2, i]:.4f}"))
             result += print_str((f"3d   AP:{mAP3d_R40[j, 0, i]:.4f}, "
                                  f"{mAP3d_R40[j, 1, i]:.4f}, "
                                  f"{mAP3d_R40[j, 2, i]:.4f}"))
-            if compute_aos:
-                result += print_str((f"aos  AP:{mAPaos_R40[j, 0, i]:.2f}, "
-                                     f"{mAPaos_R40[j, 1, i]:.2f}, "
-                                     f"{mAPaos_R40[j, 2, i]:.2f}"))
-                if i == 0:
-                   ret_dict['%s_aos/easy_R40' % class_to_name[curcls]] = mAPaos_R40[j, 0, 0]
-                   ret_dict['%s_aos/moderate_R40' % class_to_name[curcls]] = mAPaos_R40[j, 1, 0]
-                   ret_dict['%s_aos/hard_R40' % class_to_name[curcls]] = mAPaos_R40[j, 2, 0]
+            # if compute_aos:
+            #     result += print_str((f"aos  AP:{mAPaos_R40[j, 0, i]:.2f}, "
+            #                          f"{mAPaos_R40[j, 1, i]:.2f}, "
+            #                          f"{mAPaos_R40[j, 2, i]:.2f}"))
+            #     if i == 0:
+            #        ret_dict['%s_aos/easy_R40' % class_to_name[curcls]] = mAPaos_R40[j, 0, 0]
+            #        ret_dict['%s_aos/moderate_R40' % class_to_name[curcls]] = mAPaos_R40[j, 1, 0]
+            #        ret_dict['%s_aos/hard_R40' % class_to_name[curcls]] = mAPaos_R40[j, 2, 0]
 
             if i == 0:
                 # ret_dict['%s_3d/easy' % class_to_name[curcls]] = mAP3d[j, 0, 0]
@@ -837,9 +837,9 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
                 ret_dict['%s_bev/easy_R40' % class_to_name[curcls]] = mAPbev_R40[j, 0, 0]
                 ret_dict['%s_bev/moderate_R40' % class_to_name[curcls]] = mAPbev_R40[j, 1, 0]
                 ret_dict['%s_bev/hard_R40' % class_to_name[curcls]] = mAPbev_R40[j, 2, 0]
-                ret_dict['%s_image/easy_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 0, 0]
-                ret_dict['%s_image/moderate_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 1, 0]
-                ret_dict['%s_image/hard_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 2, 0]
+                # ret_dict['%s_image/easy_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 0, 0]
+                # ret_dict['%s_image/moderate_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 1, 0]
+                # ret_dict['%s_image/hard_R40' % class_to_name[curcls]] = mAPbbox_R40[j, 2, 0]
 
     if cls_ret_dict is not None:
         ret_dict['min_thresh_ret'] = cls_ret_dict

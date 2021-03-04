@@ -11,7 +11,7 @@ import logging
 from pcdet.datasets.dataset import DatasetTemplate
 from pcdet.datasets.kitti.kitti_dataset import KittiDataset
 from pcdet.datasets.nuscenes.nuscenes_dataset import NuScenesDataset
-from pcdet.datasets.multiple.multiple_dataset import MultipleDataset
+from pcdet.datasets.audi.audi_dataset import AudiDataset
 from pcdet.datasets import build_dataloader
 from pcdet.utils.box_utils import boxes_to_corners_3d
 
@@ -22,7 +22,7 @@ __all__ = {
     'DatasetTemplate': DatasetTemplate,
     'KittiDataset': KittiDataset,
     'NuScenesDataset': NuScenesDataset,
-    'MultipleDataset': MultipleDataset
+    'AudiDataset': AudiDataset
 }
 
 def init_data_dir(path):

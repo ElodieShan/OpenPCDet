@@ -281,6 +281,7 @@ class KittiDataset(DatasetTemplate):
             calib = batch_dict['calib'][batch_index]
             image_shape = batch_dict['image_shape'][batch_index]
             pred_boxes_camera = box_utils.boxes3d_lidar_to_kitti_camera(pred_boxes, calib)
+
             pred_boxes_img = box_utils.boxes3d_kitti_camera_to_imageboxes(
                 pred_boxes_camera, calib, image_shape=image_shape
             )
@@ -293,6 +294,20 @@ class KittiDataset(DatasetTemplate):
             pred_dict['rotation_y'] = pred_boxes_camera[:, 6]
             pred_dict['score'] = pred_scores
             pred_dict['boxes_lidar'] = pred_boxes
+
+            #  ----------- Varify for audi ----------------
+            # pred_dict['name'] = np.array(class_names)[pred_labels - 1]
+            # pred_dict['alpha'] = -np.arctan2(-pred_boxes[:, 1], pred_boxes[:, 0]) + pred_boxes_camera[:, 6]
+            # pred_dict['bbox'] = pred_boxes_img
+            # x,y,z = pred_boxes[:, 0:1], pred_boxes[:, 1:2], pred_boxes[:, 2:3]
+            # l, w, h, r = pred_boxes[:, 3:4], pred_boxes[:, 4:5], pred_boxes[:, 5:6], pred_boxes[:, 6:7]
+            # pred_dict['dimensions'] = np.concatenate([l, h, w], axis=-1)
+            # pred_dict['location'] = np.concatenate([-y, -z, x], axis=-1)
+            # pred_dict['rotation_y'] = -np.pi/2 - pred_boxes[:, 6]
+            # pred_dict['score'] = pred_scores
+            # pred_dict['boxes_lidar'] = pred_boxes
+            #  ----------- Varify for audi End ----------------
+
 
             return pred_dict
 
@@ -329,6 +344,22 @@ class KittiDataset(DatasetTemplate):
 
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        
+        #  ----------- Varify for audi ----------------
+        # eval_gt_idx = [copy.deepcopy(info['point_cloud']['lidar_idx']) for info in self.kitti_infos]
+        # for i in range(len(eval_gt_annos)):
+            # calib = self.get_calib(eval_gt_idx[i])
+            # loc, dims, rots = eval_gt_annos[i]['location'], eval_gt_annos[i]['dimensions'], eval_gt_annos[i]['rotation_y']
+            # gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            # boxes3d = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+            # x,y,z = boxes3d[:, 0:1], boxes3d[:, 1:2], boxes3d[:, 2:3]
+            # l, w, h, r = boxes3d[:, 3:4], boxes3d[:, 4:5], boxes3d[:, 5:6], boxes3d[:, 6:7]
+            # z -= h/2
+            # eval_gt_annos[i]['dimensions'] = np.concatenate([l, h, w], axis=-1)
+            # eval_gt_annos[i]['location'] = np.concatenate([-y, -z, x], axis=-1)
+            # eval_gt_annos[i]['rotation_y'] = -np.pi/2 - boxes3d[:, 6]
+        #  ----------- Varify for audi End----------------
+
         # num = 2
         # eval_det_annos = eval_det_annos[:num]
         # eval_gt_annos = eval_gt_annos[:num]
