@@ -5,14 +5,18 @@ import torch
 import tqdm
 from torch.nn.utils import clip_grad_norm_
 import numpy as np
+import random
 
-
-def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
-                    rank, tbar, total_it_each_epoch, dataloader_iter, 
+def train_one_epoch_cross_dataset(model, optimizer, train_loader, train_loader_dataset2, model_func, lr_scheduler, accumulated_iter, optim_cfg,
+                    rank, tbar, total_it_each_epoch, dataloader_iter, dataloader_iter_dataset2, 
                     model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0,
                     tb_log=None, leave_pbar=False): # elodie teacher model/ use_sub_data, cross_sample_prob=0.0,
-    if total_it_each_epoch == len(train_loader):
+    if total_it_each_epoch == len(train_loader)+len(train_loader_dataset2):
         dataloader_iter = iter(train_loader)
+        dataloader_iter_dataset2 = iter(train_loader_dataset2) 
+
+    shuffle_idx = np.hstack((np.zeros(len(train_loader)),np.ones(len(train_loader_dataset2))))
+    random.shuffle(shuffle_idx)
 
     if rank == 0:
         pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
@@ -23,11 +27,21 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
     #     cross_sample_array = np.random.choice([False, True], total_it_each_epoch, p=[cross_sample_prob, 1-cross_sample_prob])
     
     for cur_it in range(total_it_each_epoch):
+        print("cur_it:",cur_it,"\tshuffle_idx[cur_it] == 0:",shuffle_idx[cur_it] == 0)
         try:
-            batch = next(dataloader_iter)
+            if shuffle_idx[cur_it] == 0:
+                # print(shuffle_idx[cur_it])
+                batch = next(dataloader_iter)
+            else:
+                # print(shuffle_idx[cur_it])
+                batch = next(dataloader_iter_dataset2)
         except StopIteration:
             dataloader_iter = iter(train_loader)
-            batch = next(dataloader_iter)
+            dataloader_iter_dataset2 = iter(train_loader_dataset2)
+            if shuffle_idx[cur_it] == 0:
+                batch = next(dataloader_iter)
+            else:
+                batch = next(dataloader_iter_dataset2)
             print('new iters')
 
         lr_scheduler.step(accumulated_iter)
@@ -44,7 +58,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         optimizer.zero_grad()
         
         # print("batch:",batch)
-        if model_teacher is not None: #elodie
+        if model_teacher is not None and shuffle_idx[cur_it] == 1: #elodie
             # print("\nbatch origin:\n",batch)
             batch_teacher = copy.deepcopy(batch)
             batch_teacher.pop('16lines')
@@ -131,59 +145,6 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
     return accumulated_iter
 
 
-def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
-                start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, 
-                model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
-                lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
-                merge_all_iters_to_one_epoch=False): # elodie teacher model
-    accumulated_iter = start_iter
-    with tqdm.trange(start_epoch, total_epochs, desc='epochs', dynamic_ncols=True, leave=(rank == 0)) as tbar:
-        total_it_each_epoch = len(train_loader)
-        if merge_all_iters_to_one_epoch:
-            assert hasattr(train_loader.dataset, 'merge_all_iters_to_one_epoch')
-            train_loader.dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
-            total_it_each_epoch = len(train_loader) // max(total_epochs, 1)
-
-        dataloader_iter = iter(train_loader)
-        for cur_epoch in tbar:
-            if train_sampler is not None:
-                train_sampler.set_epoch(cur_epoch)
-
-            # train one epoch
-            if lr_warmup_scheduler is not None and cur_epoch < optim_cfg.WARMUP_EPOCH:
-                cur_scheduler = lr_warmup_scheduler
-            else:
-                cur_scheduler = lr_scheduler
-            accumulated_iter = train_one_epoch(
-                model, optimizer, train_loader, model_func,
-                model_teacher=model_teacher,
-                model_copy=model_copy,
-                use_sub_data=use_sub_data,
-                cross_sample_prob=cross_sample_prob,
-                lr_scheduler=cur_scheduler,
-                accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
-                rank=rank, tbar=tbar, tb_log=tb_log,
-                leave_pbar=(cur_epoch + 1 == total_epochs),
-                total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter
-            ) # elodie model teacher
-
-            # save trained model
-            trained_epoch = cur_epoch + 1
-            if (trained_epoch % ckpt_save_interval == 0 or trained_epoch==total_epochs) and rank == 0: #elodie total_epochs
-                ckpt_list = glob.glob(str(ckpt_save_dir / 'checkpoint_epoch_*.pth'))
-                ckpt_list.sort(key=os.path.getmtime)
-
-                if ckpt_list.__len__() >= max_ckpt_save_num:
-                    for cur_file_idx in range(0, len(ckpt_list) - max_ckpt_save_num + 1):
-                        os.remove(ckpt_list[cur_file_idx])
-
-                ckpt_name = ckpt_save_dir / ('checkpoint_epoch_%d' % trained_epoch)
-                save_checkpoint(
-                    checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
-                )
-
-
 def train_model_cross_dataset(model, optimizer, train_loader, train_loader_dataset2, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, 
                 model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
@@ -205,6 +166,8 @@ def train_model_cross_dataset(model, optimizer, train_loader, train_loader_datas
         for cur_epoch in tbar:
             if train_sampler is not None:
                 train_sampler.set_epoch(cur_epoch)
+            if train_sampler_dataset2 is not None:
+                train_sampler_dataset2.set_epoch(cur_epoch)
 
             # train one epoch
             if lr_warmup_scheduler is not None and cur_epoch < optim_cfg.WARMUP_EPOCH:
@@ -222,7 +185,9 @@ def train_model_cross_dataset(model, optimizer, train_loader, train_loader_datas
                 rank=rank, tbar=tbar, tb_log=tb_log,
                 leave_pbar=(cur_epoch + 1 == total_epochs),
                 total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter
+                dataloader_iter=dataloader_iter,
+                dataloader_iter_dataset2=dataloader_iter_dataset2
+
             ) # elodie model teacher
 
             # save trained model

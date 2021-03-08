@@ -9,9 +9,9 @@ PY_ARGS=${@:2}
 # EPOCH=80
 # TAG=test_gt_box
 
-CFG_DIR=../output/kitti_models/second_16lines_vlp/second_16lines_vlp-2
-CFG_FILE=second_16lines_vlp.yaml
-EPOCH=16
+CFG_DIR=../output/audi_models/second_audi/21030507-Audi-80epoch-batch4
+CFG_FILE=second_audi.yaml
+EPOCH=22
 TAG=test
 # TAG=test_gt_lhw_yzx_r_h2_gt
 
@@ -20,10 +20,11 @@ TAG=test
 CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test.py --launcher pytorch \
 --cfg_file $CFG_DIR/$CFG_FILE \
 --output_dir $CFG_DIR \
---batch_size 2 \
+--batch_size 4 \
 --eval_tag $TAG \
 --tcp_port 18882 \
 --ckpt $CFG_DIR/ckpt/checkpoint_epoch_$EPOCH.pth \
+--save_iou
 
 ######### Test Teacher
 # CUDA_VISIBLE_DEVICES=1 python3 -m torch.distributed.launch --nproc_per_node=1 test_teacher.py --launcher pytorch \

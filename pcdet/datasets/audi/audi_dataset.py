@@ -64,7 +64,7 @@ class AudiDataset(DatasetTemplate):
         self.root_split_path = self.root_path / ('training' if self.split != 'test' else 'testing')
 
         split_dir = Path(__file__).resolve().parent / 'split' / (self.split + '.txt')
-        self.sample_scene_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
+        self.sample_file_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
 
     def extract_image_file_name_from_lidar_file_name(self, file_name_lidar):
         file_name_image = file_name_lidar.split('/')
@@ -123,12 +123,13 @@ class AudiDataset(DatasetTemplate):
 
         return boxes 
 
-    def get_infos(self, num_workers=4, has_label=True, count_inside_pts=True, sample_scene_list=None):
+    def get_infos(self, num_workers=4, has_label=True, count_inside_pts=True, sample_file_list=None):
         import concurrent.futures as futures
 
         def process_single_scene(file_name_lidar):
             # print('%s sample_idx: %s' % (self.split, sample_idx))
             info = {}
+            file_name_lidar = str(self.root_path / file_name_lidar)
             seq_name = file_name_lidar.split('/')[-4]
             
             pc_info = {
@@ -173,10 +174,19 @@ class AudiDataset(DatasetTemplate):
 
                 annotations["occluded"] = annotations["occlusion"]
                 annotations["truncated"] = annotations["truncation"]
-                annotations["name"] = annotations["class"]
+                # annotations["name"] = annotations["class"]
+                annotations["name"] = []
+                for i in range(annotations["class"].shape[0]):
+                    class_name = annotations["class"][i]
+                    if class_name == "Bicycle":
+                        class_name = "Cyclist"
+                    if class_name == "VanSUV":
+                        class_name = "Car"
+                    annotations["name"].append(class_name)
+                annotations["name"] = np.array(annotations["name"])
                 annotations.pop("occlusion")
                 annotations.pop("truncation")
-                annotations.pop("class")
+                # annotations.pop("class")
                 annotations['dimensions'] = annotations['size']
                 annotations['location'] = annotations['center']
                 annotations['rotation_y'] = annotations['gt_boxes_lidar'][:,-1]
@@ -198,16 +208,28 @@ class AudiDataset(DatasetTemplate):
 
             return info
 
-        sample_scene_list = sample_scene_list if sample_scene_list is not None else self.sample_scene_list
+        def clean_ignored_frame(sample_file_list):
+            ignored_frame_file = Path(__file__).resolve().parent / 'split' / 'ignored_frame.txt'
+            ignored_frame_list = [x.strip().split('/')[-1] for x in open(ignored_frame_file).readlines()] if ignored_frame_file.exists() else None
+            cleaned_sample_file_list = []
+            for sample_file in sample_file_list:
+                if sample_file.split('/')[-1] not in ignored_frame_list:
+                    cleaned_sample_file_list.append(sample_file)
+            return cleaned_sample_file_list
 
-        sample_file_list = []
+        sample_file_list = sample_file_list if sample_file_list is not None else self.sample_file_list
 
-        from os.path import join
-        for scene in sample_scene_list:
-            file_names = sorted(glob.glob(join(self.root_path, 'camera_lidar_semantic_bboxes/', scene+'/', 'lidar/cam_front_center/*.npz')))
-            sample_file_list += file_names
+        # sample_file_list = []
+
+        # from os.path import join
+        # for scene in sample_scene_list:
+        #     file_names = sorted(glob.glob(join(self.root_path, 'camera_lidar_semantic_bboxes/', scene+'/', 'lidar/cam_front_center/*.npz')))
+        #     sample_file_list += file_names
             
         print("sample_file_list:",len(sample_file_list))
+        sample_file_list = clean_ignored_frame(sample_file_list)
+        print("sample_file_list after clean ignored frames:",len(sample_file_list))
+
         with futures.ThreadPoolExecutor(num_workers) as executor:
             infos = executor.map(process_single_scene, sample_file_list)
         return list(infos)
@@ -225,7 +247,7 @@ class AudiDataset(DatasetTemplate):
             infos = pickle.load(f)
 
         for k in range(len(infos)):
-            print('gt_database sample: %d/%d' % (k + 1, len(infos)))
+            # print('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
             sample_idx = info['lidar_idx']
             # points = self.get_lidar(sample_idx, num_features=info['point_cloud']['num_features'])
@@ -490,7 +512,10 @@ class AudiDataset(DatasetTemplate):
         input_dict = {
             'points': points,
             'frame_id': info['lidar_idx'],
-            'metadata': {'data_type':'audi'},
+            'metadata': {
+                'data_type':'audi',
+                'frame_name': info['point_cloud']['frame_name']
+                },
         } # elodie metadata
 
         if 'annos' in info:
@@ -561,7 +586,6 @@ def create_audi_infos(dataset_cfg, class_names, data_path, save_path, workers=4)
     # print('---------------Start to generate Audi data infos---------------')
 
     dataset.set_split(train_split)
-    print("dataset.sample_scene_list:",dataset.sample_scene_list)
     audi_infos_train = dataset.get_infos(num_workers=workers, has_label=True, count_inside_pts=True)
     for i in range(len(audi_infos_train)):
         audi_infos_train[i]['lidar_idx'] = i
@@ -624,6 +648,6 @@ if __name__ == '__main__':
         create_audi_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Car', 'Pedestrian', 'Cyclist'],
-            data_path=ROOT_DIR / 'data' / 'audi',
-            save_path=ROOT_DIR / 'data' / 'audi'
+            data_path=ROOT_DIR / 'data' / 'audi_16lines_clean',
+            save_path=ROOT_DIR / 'data' / 'audi_16lines_clean'
         )

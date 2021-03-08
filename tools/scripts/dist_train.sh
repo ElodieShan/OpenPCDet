@@ -7,10 +7,47 @@ PY_ARGS=${@:2}
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=${NGPUS} train.py --launcher pytorch ${PY_ARGS}
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
---nproc_per_node=2 train_teacher.py --launcher pytorch \
+--nproc_per_node=2 train.py --launcher pytorch \
 --cfg_file cfgs/audi_models/second_16lines_audi.yaml \
---extra_tag 21030404-Audi-80epoch-batch4 \
---ckpt_save_interval 2 \
+--extra_tag 21030701-Audi-16lines-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_audi.yaml \
+--extra_tag 21030702-Audi-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_16lines_audi.yaml \
+--extra_tag 21030703-Audi-16lines-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_audi.yaml \
+--extra_tag 21030704-Audi-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_16lines_audi.yaml \
+--extra_tag 21030705-Audi-16lines-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_audi.yaml \
+--extra_tag 21030706-Audi-80epoch-batch4-mode1 \
+--ckpt_save_interval 2
+
+# CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+# --nproc_per_node=2 train_teacher.py --launcher pytorch \
+# --cfg_file cfgs/audi_models/second_audi2.yaml \
+# --extra_tag 21030508-Audi-80epoch-batch4 \
+# --ckpt_save_interval 2 \
+
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 # --nproc_per_node=2 train.py --launcher pytorch \
