@@ -15,23 +15,24 @@ class SECONDNet(Detector3DTemplate):
                 batch_dict = cur_module(batch_dict)    
             return batch_dict
 
-        if batch_dict_sub is not None:
-            if self.remain_sub_voxel_coords:
-                batch_dict['sub_voxel_coords'] = batch_dict_sub['voxel_coords']
-            else:
-                sub_multi_scale_3d_features = {}
-                for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
-                    sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
-                batch_dict['sub_multi_scale_3d_features'] = sub_multi_scale_3d_features
+        # if batch_dict_sub is not None:
+        #     if self.remain_sub_voxel_coords:
+        #         batch_dict['sub_voxel_coords'] = batch_dict_sub['voxel_coords']
+        #     else:
+        #         sub_multi_scale_3d_features = {}
+        #         for feature_ in self.backbone_cfg['SUB_FEATURE_LIST']:
+        #             sub_multi_scale_3d_features[feature_] = batch_dict_sub[feature_]
+        #         batch_dict['sub_multi_scale_3d_features'] = sub_multi_scale_3d_features
 
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)
 
+        # print("is_teacher:",is_teacher,"   'points' in batch_dict:", batch_dict['points'].shape)
         if is_teacher:
             forword_result = self.get_forword_result()
             return forword_result, batch_dict
             
-        if self.training:
+        if self.training:            
             loss, tb_dict, disp_dict = self.get_training_loss(teacher_ret_dict=teacher_ret_dict, student_data_dict=batch_dict, teacher_data_dict=teacher_data_dict)
 
             ret_dict = {

@@ -144,7 +144,9 @@ class DatasetTemplate(torch_data.Dataset):
 
         if 'ring' in data_dict: # elodie
              data_dict.pop('ring')
-
+        if 'lidar_id' in data_dict:
+            data_dict.pop('lidar_id')
+            # print("data_dict:",data_dict.keys(),'\tpoints:',data_dict['points'].shape)
         data_dict.pop('gt_names', None)
         return data_dict
 

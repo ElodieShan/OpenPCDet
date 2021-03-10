@@ -7,11 +7,14 @@ class PVRCNN(Detector3DTemplate):
         self.module_list = self.build_networks()
 
     def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, batch_dict_sub=None):
-        for cur_module in self.module_list:
-            batch_dict = cur_module(batch_dict)
         if is_teacher:
+            for cur_module in self.module_list[:6]:
+                batch_dict = cur_module(batch_dict)
             forword_result = self.get_forword_result()
             return forword_result, batch_dict
+
+        for cur_module in self.module_list:
+            batch_dict = cur_module(batch_dict)
 
         if self.training:
             loss, tb_dict, disp_dict = self.get_training_loss(teacher_ret_dict=teacher_ret_dict, student_data_dict=batch_dict, teacher_data_dict=teacher_data_dict)

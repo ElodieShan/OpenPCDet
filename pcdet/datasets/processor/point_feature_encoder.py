@@ -28,6 +28,9 @@ class PointFeatureEncoder(object):
         """
         if "ring" in self.src_feature_list: #elodie
             data_dict['ring'] = data_dict['points'][:,self.src_feature_list.index('ring')]
+        if "lidar_id" in self.src_feature_list: #elodie
+            data_dict['lidar_id'] = data_dict['points'][:,self.src_feature_list.index('lidar_id')]
+
         data_dict['points'], use_lead_xyz = getattr(self, self.point_encoding_config.encoding_type)(
             data_dict['points']
         )

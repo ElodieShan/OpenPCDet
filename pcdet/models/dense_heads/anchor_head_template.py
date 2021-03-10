@@ -191,7 +191,7 @@ class AnchorHeadTemplate(nn.Module):
 
         if self.hint_soft_loss_type is not None:
             hint_soft_loss_temperature = soft_losses_cfg.HINT_LOSS.get('TEMPERATURE', 1)
-            hint_normalize = soft_losses_cfg.HINT_LOSS.get('NORMALIZE', 0.5)
+            hint_normalize = soft_losses_cfg.HINT_LOSS.get('NORMALIZE', True)
 
             self.add_module(
                 'soft_hint_loss_func',
@@ -1013,8 +1013,11 @@ class AnchorHeadTemplate(nn.Module):
 
                 hint_loss_src = hint_loss_src.sum()
             else:
-                student_feature = student_data_dict[feature_]
-                teacher_feature = teacher_data_dict[feature_]
+                if feature_ == 'sub_spatial_features_2d':
+                    teacher_feature = teacher_data_dict['sub_branch']['spatial_features_2d']
+                    student_feature = student_data_dict['spatial_features_2d']
+                else:
+                    teacher_feature = teacher_data_dict[feature_]
                 student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
                 student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
 
@@ -1029,7 +1032,6 @@ class AnchorHeadTemplate(nn.Module):
                 else:
                     hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
                     hint_loss_src = hint_loss_src.mean(dim=-1)
-
                 hint_loss_src = hint_loss_src.sum()/batch_size
 
             # frame_id =  student_data_dict['frame_id'][0]

@@ -6,19 +6,38 @@ PY_ARGS=${@:2}
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=${NGPUS} train.py --launcher pytorch ${PY_ARGS}
 
-CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
---nproc_per_node=2 train_teacher.py --launcher pytorch \
---cfg_file cfgs/kitti_models/sub_branch.yaml \
---extra_tag 21022605-VLP-80epoch-batch2-sub_branch_mask20 \
---ckpt_save_interval 2 \
---use_sub_data
+# CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+# --nproc_per_node=2 train.py --launcher pytorch \
+# --cfg_file cfgs/audi_models/second_audi2.yaml \
+# --extra_tag test \
+# --ckpt_save_interval 2
 
 CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
---nproc_per_node=2 train_teacher.py --launcher pytorch \
---cfg_file cfgs/kitti_models/sub_branch.yaml \
---extra_tag 21022606-VLP-80epoch-batch2-sub_branch_mask20-2 \
---ckpt_save_interval 2 \
---use_sub_data
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_16lines_audi4.yaml \
+--extra_tag 21031003-Audi-mode4-16lines-80epoch-batch4-mode3 \
+--tcp_port 18811 \
+--ckpt_save_interval 2
+
+CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
+--nproc_per_node=2 train.py --launcher pytorch \
+--cfg_file cfgs/audi_models/second_16lines_audi4.yaml \
+--extra_tag 21031004-Audi-mode4-16lines-80epoch-batch4-mode3 \
+--tcp_port 18811 \
+--ckpt_save_interval 2
+
+
+# CUDA_VISIBLE_DEVICES=6,7 python3 -m torch.distributed.launch \
+# --nproc_per_node=2 train.py --launcher pytorch \
+# --cfg_file cfgs/kitti_models/pv_rcnn_16lines.yaml \
+# --extra_tag 21030206-VLP-80epoch-batch2 \
+# --ckpt_save_interval 2
+
+# CUDA_VISIBLE_DEVICES=6,7 python3 -m torch.distributed.launch \
+# --nproc_per_node=2 train.py --launcher pytorch \
+# --cfg_file cfgs/kitti_models/pv_rcnn_16lines.yaml \
+# --extra_tag 21030207-VLP-80epoch-batch2 \
+# --ckpt_save_interval 2
 
 # CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch \
 # --nproc_per_node=2 train.py --launcher pytorch \

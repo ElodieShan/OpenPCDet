@@ -7,13 +7,13 @@ from pcdet.utils import common_utils
 from .dataset import DatasetTemplate
 from .kitti.kitti_dataset import KittiDataset
 from .nuscenes.nuscenes_dataset import NuScenesDataset
-from .multiple.multiple_dataset import MultipleDataset
+from .audi.audi_dataset import AudiDataset
 
 __all__ = {
     'DatasetTemplate': DatasetTemplate,
     'KittiDataset': KittiDataset,
     'NuScenesDataset': NuScenesDataset,
-    'MultipleDataset': MultipleDataset
+    'AudiDataset': AudiDataset
 }
 
 

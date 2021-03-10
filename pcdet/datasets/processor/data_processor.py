@@ -24,6 +24,8 @@ class DataProcessor(object):
         data_dict['points'] = data_dict['points'][mask]
         if 'ring' in data_dict:
             data_dict['ring'] = data_dict['ring'][mask]
+        if 'lidar_id' in data_dict:
+            data_dict['lidar_id'] = data_dict['lidar_id'][mask]
         if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
             mask = box_utils.mask_boxes_outside_range_numpy(
                 data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1)
@@ -198,6 +200,37 @@ class DataProcessor(object):
                 ).numpy()
                 data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
         data_dict.pop('ring')
+        return data_dict
+
+    # @brief: select pointclouds to 16 lines by lidar id for Audi Dataset - elodie
+    def select_points_by_lidar_id(self, data_dict=None, config=None): 
+        if data_dict is None:
+            return partial(self.select_points_by_lidar_id, config=config)
+        assert "lidar_id" in data_dict, '[Error Elodie] lidar_id not in data_dict!'
+
+        if config.DOWNSAMPLE_POINTS[self.mode] is not True:
+            data_dict.pop('lidar_id')
+            return data_dict
+
+        align_points_switch = config.get('ALIGN_POINTS', False)
+
+        points = data_dict['points']
+        lidar_id = data_dict['lidar_id']
+
+        if config.REPLACE_ORI_POINTS[self.mode]:
+            data_dict['points'] = points[lidar_id==3]
+        else:
+            points_16lines = points[lidar_id==3]
+            data_dict['16lines'] = {}
+            data_dict['16lines']['points_16lines'] = points_16lines
+            if align_points_switch: # elodie : if align_points is False, extra_points will be None 
+                data_dict['16lines']['extra_points_16lines'] = points[lidar_id!=3]
+            if config.get('GET_INBOX_POINTS', False): #elodie
+                point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+                    torch.from_numpy(points_16lines[:, 0:3]), torch.from_numpy(data_dict['gt_boxes'][:,:7])
+                ).numpy()
+                data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
+        data_dict.pop('lidar_id')
         return data_dict
 
     def forward(self, data_dict):
