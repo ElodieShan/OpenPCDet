@@ -1,5 +1,5 @@
 DATASET: 'WaymoDataset'
-DATA_PATH: '../data/waymo'
+DATA_PATH: '/home/elodie/OpenPCDet/data/waymo'
 PROCESSED_DATA_TAG: 'waymo_processed_data'
 
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
@@ -30,6 +30,9 @@ DATA_AUGMENTOR:
           NUM_POINT_FEATURES: 5
           REMOVE_EXTRA_WIDTH: [0.0, 0.0, 0.0]
           LIMIT_WHOLE_SCENE: True
+        
+        - NAME: complish_gt_points
+          NUM_POINT_FEATURES: 5
 
         - NAME: random_world_flip
           ALONG_AXIS_LIST: ['x', 'y']

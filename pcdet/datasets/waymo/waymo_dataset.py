@@ -141,7 +141,8 @@ class WaymoDataset(DatasetTemplate):
             input_dict.update({
                 'gt_names': annos['name'],
                 'gt_boxes': gt_boxes_lidar,
-                'num_points_in_gt': annos.get('num_points_in_gt', None)
+                'num_points_in_gt': annos.get('num_points_in_gt', None),
+                'gt_obj_ids': annos['obj_ids'] #elodie 0703
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)
@@ -260,8 +261,10 @@ class WaymoDataset(DatasetTemplate):
         with open(info_path, 'rb') as f:
             infos = pickle.load(f)
 
-        for k in range(0, len(infos), sampled_interval):
-            print('gt_database sample: %d/%d' % (k + 1, len(infos)))
+        for k in tqdm(range(0, len(infos), sampled_interval)):
+
+        # for k in tqdm(range(95000, len(infos), sampled_interval)):
+            # print('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
 
             pc_info = info['point_cloud']
@@ -273,7 +276,7 @@ class WaymoDataset(DatasetTemplate):
             names = annos['name']
             difficulty = annos['difficulty']
             gt_boxes = annos['gt_boxes_lidar']
-
+            obj_ids = annos['obj_ids'] # elodie 210701
             num_obj = gt_boxes.shape[0]
 
             box_idxs_of_pts = roiaware_pool3d_utils.points_in_boxes_gpu(
@@ -288,13 +291,14 @@ class WaymoDataset(DatasetTemplate):
                 gt_points[:, :3] -= gt_boxes[i, :3]
 
                 if (used_classes is None) or names[i] in used_classes:
-                    with open(filepath, 'w') as f:
-                        gt_points.tofile(f)
+                    # with open(filepath, 'w') as f:
+                    #     gt_points.tofile(f)
 
                     db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
                     db_info = {'name': names[i], 'path': db_path, 'sequence_name': sequence_name,
                                'sample_idx': sample_idx, 'gt_idx': i, 'box3d_lidar': gt_boxes[i],
-                               'num_points_in_gt': gt_points.shape[0], 'difficulty': difficulty[i]}
+                               'num_points_in_gt': gt_points.shape[0], 'difficulty': difficulty[i],
+                               'obj_id': obj_ids[i]}
                     if names[i] in all_db_infos:
                         all_db_infos[names[i]].append(db_info)
                     else:
@@ -318,27 +322,27 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     train_filename = save_path / ('waymo_infos_%s.pkl' % train_split)
     val_filename = save_path / ('waymo_infos_%s.pkl' % val_split)
 
-    print('---------------Start to generate data infos---------------')
+    # print('---------------Start to generate data infos---------------')
 
-    dataset.set_split(train_split)
-    waymo_infos_train = dataset.get_infos(
-        raw_data_path=data_path / raw_data_tag,
-        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
-    )
-    with open(train_filename, 'wb') as f:
-        pickle.dump(waymo_infos_train, f)
-    print('----------------Waymo info train file is saved to %s----------------' % train_filename)
+    # dataset.set_split(train_split)
+    # waymo_infos_train = dataset.get_infos(
+    #     raw_data_path=data_path / raw_data_tag,
+    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+    #     sampled_interval=1
+    # )
+    # with open(train_filename, 'wb') as f:
+    #     pickle.dump(waymo_infos_train, f)
+    # print('----------------Waymo info train file is saved to %s----------------' % train_filename)
 
-    dataset.set_split(val_split)
-    waymo_infos_val = dataset.get_infos(
-        raw_data_path=data_path / raw_data_tag,
-        save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
-    )
-    with open(val_filename, 'wb') as f:
-        pickle.dump(waymo_infos_val, f)
-    print('----------------Waymo info val file is saved to %s----------------' % val_filename)
+    # dataset.set_split(val_split)
+    # waymo_infos_val = dataset.get_infos(
+    #     raw_data_path=data_path / raw_data_tag,
+    #     save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
+    #     sampled_interval=1
+    # )
+    # with open(val_filename, 'wb') as f:
+    #     pickle.dump(waymo_infos_val, f)
+    # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
 
     print('---------------Start create groundtruth database for data augmentation---------------')
     dataset.set_split(train_split)

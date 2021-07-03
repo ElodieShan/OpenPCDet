@@ -5,6 +5,7 @@
 data/
 *.pyc
 venv/
+output/
 *.idea/
 *.so
 *.yaml
