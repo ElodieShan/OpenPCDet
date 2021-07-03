@@ -2,9 +2,8 @@ from functools import partial
 
 import numpy as np
 
-from ...utils import common_utils
+from ...utils import common_utils, box_utils
 from . import augmentor_utils, database_sampler
-
 
 class DataAugmentor(object):
     def __init__(self, root_path, augmentor_configs, class_names, logger=None):
@@ -39,7 +38,26 @@ class DataAugmentor(object):
 
     def __setstate__(self, d):
         self.__dict__.update(d)
-   
+
+    def complish_gt_points(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.complish_gt_points, config=config)
+        assert "gt_obj_ids" in data_dict, '[Error Elodie] gt_obj_ids not in data_dict!'
+        
+        points = data_dict['points']
+        points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
+        for box, obj_id_key in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids']):
+            filename = '%s.bin' % (obj_id_key)
+            file_path = self.root_path /  'pcdet_completed_gt_database_train' / filename
+            completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
+                    [-1, config.NUM_POINT_FEATURES])
+            completed_points = common_utils.rotate_points_along_z(completed_points[np.newaxis, :, :], np.array([box[-1]]))[0]
+            completed_points[:, :3] += box[:3]
+            points = np.concatenate([completed_points, points], axis=0)
+        data_dict['points'] = points
+
+        return data_dict
+
     def random_world_flip(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_world_flip, config=config)

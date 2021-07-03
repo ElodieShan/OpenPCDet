@@ -128,6 +128,7 @@ def repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir
         # record this epoch which has been evaluated
         with open(ckpt_record_file, 'a') as f:
             print('%s' % cur_epoch_id, file=f)
+        print("cur_epoch_id:",cur_epoch_id)
         logger.info('Epoch %s has been evaluated' % cur_epoch_id)
 
 

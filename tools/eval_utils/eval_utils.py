@@ -41,16 +41,19 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     if dist_test:
         num_gpus = torch.cuda.device_count()
         local_rank = cfg.LOCAL_RANK % num_gpus
+        print("local_rank:",local_rank,"  OK")
         model = torch.nn.parallel.DistributedDataParallel(
                 model,
                 device_ids=[local_rank],
                 broadcast_buffers=False
         )
     model.eval()
-
+    print("OK1")
     if cfg.LOCAL_RANK == 0:
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
+    print("OK2")
+
     for i, batch_dict in enumerate(dataloader):
         load_data_to_gpu(batch_dict)
         with torch.no_grad():
@@ -80,6 +83,7 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     logger.info('Generate label finished(sec_per_example: %.4f second).' % sec_per_example)
 
     if cfg.LOCAL_RANK != 0:
+        print("LOCAL_RANK: return {", cfg.LOCAL_RANK)
         return {}
 
     ret_dict = {}
