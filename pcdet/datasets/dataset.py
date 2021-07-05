@@ -31,7 +31,7 @@ class DatasetTemplate(torch_data.Dataset):
             self.root_path, self.dataset_cfg.DATA_AUGMENTOR, self.class_names, logger=self.logger
         ) if self.training else None
         self.data_processor = DataProcessor(
-            self.dataset_cfg.DATA_PROCESSOR, point_cloud_range=self.point_cloud_range, training=self.training
+            self.dataset_cfg.DATA_PROCESSOR, point_cloud_range=self.point_cloud_range, training=self.training, root_path=self.root_path
         )
 
         self.grid_size = self.data_processor.grid_size
@@ -133,6 +133,7 @@ class DatasetTemplate(torch_data.Dataset):
             gt_boxes = np.concatenate((data_dict['gt_boxes'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
             data_dict['gt_boxes'] = gt_boxes
             data_dict['gt_obj_ids'] = data_dict['gt_obj_ids'][selected]
+            data_dict['num_points_in_gt'] = data_dict['num_points_in_gt'][selected]
 
         data_dict = self.point_feature_encoder.forward(data_dict)
 

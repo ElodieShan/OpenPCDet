@@ -6,12 +6,13 @@ from ...utils import box_utils, common_utils
 
 
 class DataProcessor(object):
-    def __init__(self, processor_configs, point_cloud_range, training):
+    def __init__(self, processor_configs, point_cloud_range, training, root_path):
         self.point_cloud_range = point_cloud_range
         self.training = training
         self.mode = 'train' if training else 'test'
         self.grid_size = self.voxel_size = None
         self.data_processor_queue = []
+        self.root_path = root_path
         for cur_cfg in processor_configs:
             cur_processor = getattr(self, cur_cfg.NAME)(config=cur_cfg)
             self.data_processor_queue.append(cur_processor)
@@ -104,6 +105,32 @@ class DataProcessor(object):
                 choice = np.concatenate((choice, extra_choice), axis=0)
             np.random.shuffle(choice)
         data_dict['points'] = points[choice]
+        return data_dict
+
+    def complish_gt_points(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.complish_gt_points, config=config)
+        assert "gt_obj_ids" in data_dict, '[Error Elodie] gt_obj_ids not in data_dict!'
+        
+        if config.COMPLISH_ENABLED[self.mode]:
+            points = data_dict['points']
+            points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
+            for box, obj_id_key in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids']):
+                filename = '%s.bin' % (obj_id_key)
+                file_path = self.root_path /  'pcdet_completed_gt_database_train' / filename
+                completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
+                        [-1, config.NUM_POINT_FEATURES])
+                if config.RANDOM_SAMPLE:
+                    num_points = config.NUM_POINTS
+                    if num_points < completed_points.shape[0]:
+                        choice = np.arange(0, completed_points.shape[0], dtype=np.int32)
+                        choice = np.random.choice(choice, num_points, replace=False)
+                        completed_points = completed_points[choice]
+                completed_points = common_utils.rotate_points_along_z(completed_points[np.newaxis, :, :], np.array([box[-1]]))[0]
+                completed_points[:, :3] += box[:3]
+                points = np.concatenate([completed_points, points], axis=0)
+            data_dict['points'] = points
+
         return data_dict
 
     def forward(self, data_dict):

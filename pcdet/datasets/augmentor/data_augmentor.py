@@ -45,15 +45,32 @@ class DataAugmentor(object):
         assert "gt_obj_ids" in data_dict, '[Error Elodie] gt_obj_ids not in data_dict!'
         
         points = data_dict['points']
-        points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
-        for box, obj_id_key in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids']):
-            filename = '%s.bin' % (obj_id_key)
-            file_path = self.root_path /  'pcdet_completed_gt_database_train' / filename
-            completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
-                    [-1, config.NUM_POINT_FEATURES])
-            completed_points = common_utils.rotate_points_along_z(completed_points[np.newaxis, :, :], np.array([box[-1]]))[0]
-            completed_points[:, :3] += box[:3]
-            points = np.concatenate([completed_points, points], axis=0)
+        completed_gt_dirname = config.DIRNAME
+        # points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
+        completed_points_all = None
+        for box, obj_id_key, num_points_in_gt in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids'], data_dict['num_points_in_gt']):
+            if num_points_in_gt > config.NUM_POINTS_GT:
+                continue
+            try:
+                filename = '%s.bin' % (obj_id_key)
+                file_path = self.root_path /  config.DIRNAME / filename
+                completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
+                        [-1, config.NUM_POINT_FEATURES])
+                if config.RANDOM_SAMPLE:
+                    num_points = config.NUM_POINTS
+                    if num_points < completed_points.shape[0]:
+                        choice = np.arange(0, completed_points.shape[0], dtype=np.int32)
+                        choice = np.random.choice(choice, num_points, replace=False)
+                        completed_points = completed_points[choice]
+                completed_points = common_utils.rotate_points_along_z(completed_points[np.newaxis, :, :], np.array([box[-1]]))[0]
+                completed_points[:, :3] += box[:3]
+                if completed_points_all is None:
+                    completed_points_all = completed_points
+                else:
+                    completed_points_all = np.vstack((completed_points_all, completed_points))
+            except:
+                pass
+        points = np.concatenate([completed_points_all, points], axis=0)
         data_dict['points'] = points
 
         return data_dict
