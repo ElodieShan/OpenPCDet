@@ -32,7 +32,11 @@ DATA_AUGMENTOR:
           LIMIT_WHOLE_SCENE: True
         
         - NAME: complish_gt_points
+          DIRNAME: pcdet_completed_gt_database_train_sample_1000
           NUM_POINT_FEATURES: 5
+          NUM_POINTS_GT: 1000
+          RANDOM_SAMPLE: False
+          # NUM_POINTS: 1000
 
         - NAME: random_world_flip
           ALONG_AXIS_LIST: ['x', 'y']
@@ -54,6 +58,15 @@ POINT_FEATURE_ENCODING: {
 DATA_PROCESSOR:
     - NAME: mask_points_and_boxes_outside_range
       REMOVE_OUTSIDE_BOXES: True
+
+    - NAME: complish_gt_points
+      COMPLISH_ENABLED: {
+        'train': False,
+        'test': True
+      }
+      NUM_POINT_FEATURES: 5
+      RANDOM_SAMPLE: True
+      NUM_POINTS: 1000
 
     - NAME: shuffle_points
       SHUFFLE_ENABLED: {

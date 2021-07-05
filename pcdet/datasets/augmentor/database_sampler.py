@@ -120,6 +120,8 @@ class DataBaseSampler(object):
         gt_boxes = data_dict['gt_boxes'][gt_boxes_mask]
         gt_names = data_dict['gt_names'][gt_boxes_mask]
         gt_obj_ids = data_dict['gt_obj_ids'][gt_boxes_mask]
+        num_points_in_gt = data_dict['num_points_in_gt'][gt_boxes_mask]
+
         points = data_dict['points']
         if self.sampler_cfg.get('USE_ROAD_PLANE', False):
             sampled_gt_boxes, mv_height = self.put_boxes_on_road_planes(
@@ -146,6 +148,7 @@ class DataBaseSampler(object):
         sampled_gt_names = np.array([x['name'] for x in total_valid_sampled_dict])
 
         sampled_gt_obj_ids = np.array([x['obj_id'] for x in total_valid_sampled_dict]) #elodie 0703
+        sampled_num_points_in_gt = np.array([x['num_points_in_gt'] for x in total_valid_sampled_dict]) #elodie 0703
 
         large_sampled_gt_boxes = box_utils.enlarge_box3d(
             sampled_gt_boxes[:, 0:7], extra_width=self.sampler_cfg.REMOVE_EXTRA_WIDTH
@@ -155,10 +158,14 @@ class DataBaseSampler(object):
         gt_names = np.concatenate([gt_names, sampled_gt_names], axis=0)
         gt_boxes = np.concatenate([gt_boxes, sampled_gt_boxes], axis=0)
         gt_obj_ids = np.concatenate([gt_obj_ids, sampled_gt_obj_ids], axis=0) #elodie 0703
+        num_points_in_gt = np.concatenate([num_points_in_gt, sampled_num_points_in_gt], axis=0) #elodie 0703
+
 
         data_dict['gt_boxes'] = gt_boxes
         data_dict['gt_names'] = gt_names
         data_dict['gt_obj_ids'] = gt_obj_ids #elodie 0703
+        data_dict['num_points_in_gt'] = num_points_in_gt #elodie 0703
+
         data_dict['points'] = points
         return data_dict
 
