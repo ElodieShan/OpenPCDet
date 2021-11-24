@@ -254,7 +254,10 @@ class WaymoDataset(DatasetTemplate):
 
     def create_groundtruth_database(self, info_path, save_path, used_classes=None, split='train', sampled_interval=10,
                                     processed_data_tag=None):
-        database_save_path = save_path / ('pcdet_gt_database_%s_sampled_%d' % (split, sampled_interval))
+        if sampled_interval==1 and split=='train':
+            database_save_path = save_path / ('pcdet_gt_database_%s_sampled_%d_part1' % (split, sampled_interval))
+        else:
+            database_save_path = save_path / ('pcdet_gt_database_%s_sampled_%d' % (split, sampled_interval))
         db_info_save_path = save_path / ('pcdet_waymo_dbinfos_%s_sampled_%d.pkl' % (split, sampled_interval))
 
         database_save_path.mkdir(parents=True, exist_ok=True)
@@ -264,7 +267,9 @@ class WaymoDataset(DatasetTemplate):
             infos = pickle.load(f)
 
         for k in tqdm(range(0, len(infos), sampled_interval)):
-
+            if k==95000 and sampled_interval==1:
+                database_save_path = save_path / ('pcdet_gt_database_%s_sampled_%d_part2' % (split, sampled_interval))
+                database_save_path.mkdir(parents=True, exist_ok=True)
         # for k in tqdm(range(95000, len(infos), sampled_interval)):
             # print('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
@@ -293,8 +298,8 @@ class WaymoDataset(DatasetTemplate):
                 gt_points[:, :3] -= gt_boxes[i, :3]
 
                 if (used_classes is None) or names[i] in used_classes:
-                    # with open(filepath, 'w') as f:
-                    #     gt_points.tofile(f)
+                    with open(filepath, 'w') as f:
+                        gt_points.tofile(f)
 
                     db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
                     db_info = {'name': names[i], 'path': db_path, 'sequence_name': sequence_name,
@@ -346,10 +351,16 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     #     pickle.dump(waymo_infos_val, f)
     # print('----------------Waymo info val file is saved to %s----------------' % val_filename)
 
-    print('---------------Start create groundtruth database for data augmentation---------------')
-    dataset.set_split(train_split)
+    # print('---------------Start create groundtruth database for data augmentation---------------')
+    # dataset.set_split(train_split)
+    # dataset.create_groundtruth_database(
+    #     info_path=train_filename, save_path=save_path, split='train', sampled_interval=10,
+    #     used_classes=['Vehicle', 'Pedestrian', 'Cyclist']
+    # )
+    print('---------------Start create groundtruth database in val set for distillation---------------')
+    dataset.set_split(val_split)
     dataset.create_groundtruth_database(
-        info_path=train_filename, save_path=save_path, split='train', sampled_interval=10,
+        info_path=val_filename, save_path=save_path, split='val', sampled_interval=1,
         used_classes=['Vehicle', 'Pedestrian', 'Cyclist']
     )
     print('---------------Data preparation Done---------------')

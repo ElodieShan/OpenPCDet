@@ -161,9 +161,15 @@ def sample_complished_gt_dataset(gt_obj_id_info_path, point_feature_num=5, sampl
 
 
 if __name__ == '__main__':
+    ##################### Train
     # gt_info_path = "/home/elodie/OpenPCDet/data/waymo/pcdet_waymo_dbinfos_train_sampled_1.pkl"
     # create_obj_id_dict(gt_info_path)
-    gt_obj_id_info_path = "/home/elodie/OpenPCDet/data/waymo/pcdet_waymo_dbinfos_train_sampled_1_obj_id.pkl"
-    sample_complished_gt_dataset(gt_obj_id_info_path)
+    # gt_obj_id_info_path = "/home/elodie/OpenPCDet/data/waymo/pcdet_waymo_dbinfos_train_sampled_1_obj_id.pkl"
+    # sample_complished_gt_dataset(gt_obj_id_info_path)
     # create_complished_gt_dataset(gt_obj_id_info_path)
     # analyze_gt_dataset(gt_obj_id_info_path)
+    ##################### Val
+    gt_info_path = "/home/elodie/OpenPCDet/data/waymo/pcdet_waymo_dbinfos_val_sampled_1.pkl"
+    create_obj_id_dict(gt_info_path)
+    gt_obj_id_info_path = "/home/elodie/OpenPCDet/data/waymo/pcdet_waymo_dbinfos_val_sampled_1_obj_id.pkl"
+    sample_complished_gt_dataset(gt_obj_id_info_path)

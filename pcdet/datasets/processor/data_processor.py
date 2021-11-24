@@ -3,7 +3,7 @@ from functools import partial
 import numpy as np
 
 from ...utils import box_utils, common_utils
-
+import os
 
 class DataProcessor(object):
     def __init__(self, processor_configs, point_cloud_range, training, root_path):
@@ -114,10 +114,12 @@ class DataProcessor(object):
         
         if config.COMPLISH_ENABLED[self.mode]:
             points = data_dict['points']
-            points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
+            # points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
             for box, obj_id_key in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids']):
                 filename = '%s.bin' % (obj_id_key)
                 file_path = self.root_path /  'pcdet_completed_gt_database_train' / filename
+                if not os.path.exists(file_path):
+                    continue
                 completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
                         [-1, config.NUM_POINT_FEATURES])
                 if config.RANDOM_SAMPLE:
