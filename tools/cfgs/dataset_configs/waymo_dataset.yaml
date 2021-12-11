@@ -1,5 +1,5 @@
 DATASET: 'WaymoDataset'
-DATA_PATH: '../data/waymo'
+DATA_PATH: '/home/elodie/OpenPCDet/data/waymo'
 PROCESSED_DATA_TAG: 'waymo_processed_data_v0_5_0'
 
 POINT_CLOUD_RANGE: [-75.2, -75.2, -2, 75.2, 75.2, 4]
@@ -10,7 +10,7 @@ DATA_SPLIT: {
 }
 
 SAMPLED_INTERVAL: {
-    'train': 5,
+    'train': 1,
     'test': 1
 }
 

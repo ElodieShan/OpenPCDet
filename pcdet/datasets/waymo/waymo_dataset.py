@@ -134,7 +134,7 @@ class WaymoDataset(DatasetTemplate):
                 sequence_file = found_sequence_file
         return sequence_file
 
-    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True, sampled_interval=1):
+    def get_infos(self, raw_data_path, save_path, num_workers=multiprocessing.cpu_count(), has_label=True, sampled_interval=1, use_ring=False):
         from functools import partial
         from . import waymo_utils
         print('---------------The waymo sample interval is %d, total sequecnes is %d-----------------'
@@ -142,7 +142,7 @@ class WaymoDataset(DatasetTemplate):
 
         process_single_sequence = partial(
             waymo_utils.process_single_sequence,
-            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label
+            save_path=save_path, sampled_interval=sampled_interval, has_label=has_label, use_ring=use_ring
         )
         sample_sequence_file_list = [
             self.check_sequence_name_with_all_version(raw_data_path / sequence_file)
@@ -161,6 +161,9 @@ class WaymoDataset(DatasetTemplate):
         point_features = np.load(lidar_file)  # (N, 7): [x, y, z, intensity, elongation, NLZ_flag]
 
         points_all, NLZ_flag = point_features[:, 0:5], point_features[:, 5]
+        if self.dataset_cfg.get('USE_RING', False):
+            points_ring = point_features[:, 6].reshape([-1,1])
+            points_all = np.hstack((points_all, points_ring))
         if not self.dataset_cfg.get('DISABLE_NLZ_FLAG_ON_POINTS', False):
             points_all = points_all[NLZ_flag == -1]
         points_all[:, 3] = np.tanh(points_all[:, 3])
@@ -343,18 +346,21 @@ class WaymoDataset(DatasetTemplate):
             names = annos['name']
             difficulty = annos['difficulty']
             gt_boxes = annos['gt_boxes_lidar']
+            obj_ids = annos['obj_ids'] # elodie 210701
 
             if k % 4 != 0 and len(names) > 0:
                 mask = (names == 'Vehicle')
                 names = names[~mask]
                 difficulty = difficulty[~mask]
                 gt_boxes = gt_boxes[~mask]
+                obj_ids = obj_ids[~mask]
 
             if k % 2 != 0 and len(names) > 0:
                 mask = (names == 'Pedestrian')
                 names = names[~mask]
                 difficulty = difficulty[~mask]
                 gt_boxes = gt_boxes[~mask]
+                obj_ids = obj_ids[~mask]
 
             num_obj = gt_boxes.shape[0]
             if num_obj == 0:
@@ -378,7 +384,8 @@ class WaymoDataset(DatasetTemplate):
                     db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
                     db_info = {'name': names[i], 'path': db_path, 'sequence_name': sequence_name,
                                'sample_idx': sample_idx, 'gt_idx': i, 'box3d_lidar': gt_boxes[i],
-                               'num_points_in_gt': gt_points.shape[0], 'difficulty': difficulty[i]}
+                               'num_points_in_gt': gt_points.shape[0], 'difficulty': difficulty[i],
+                               'obj_id': obj_ids[i]}
 
                     # it will be used if you choose to use shared memory for gt sampling
                     stacked_gt_points.append(gt_points)
@@ -402,7 +409,7 @@ class WaymoDataset(DatasetTemplate):
 
 def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
                        raw_data_tag='raw_data', processed_data_tag='waymo_processed_data',
-                       workers=min(16, multiprocessing.cpu_count())):
+                       workers=min(16, multiprocessing.cpu_count()), use_ring=False):
     dataset = WaymoDataset(
         dataset_cfg=dataset_cfg, class_names=class_names, root_path=data_path,
         training=False, logger=common_utils.create_logger()
@@ -419,7 +426,7 @@ def create_waymo_infos(dataset_cfg, class_names, data_path, save_path,
     waymo_infos_train = dataset.get_infos(
         raw_data_path=data_path / raw_data_tag,
         save_path=save_path / processed_data_tag, num_workers=workers, has_label=True,
-        sampled_interval=1
+        sampled_interval=1, use_ring=use_ring,
     )
     with open(train_filename, 'wb') as f:
         pickle.dump(waymo_infos_train, f)
@@ -451,7 +458,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config of dataset')
     parser.add_argument('--func', type=str, default='create_waymo_infos', help='')
-    parser.add_argument('--processed_data_tag', type=str, default='waymo_processed_data_v0_5_0', help='')
+    parser.add_argument('--processed_data_tag', type=str, default='waymo_ring_processed_data_v0_5_0', help='')
     args = parser.parse_args()
 
     if args.func == 'create_waymo_infos':
@@ -467,8 +474,18 @@ if __name__ == '__main__':
         create_waymo_infos(
             dataset_cfg=dataset_cfg,
             class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
-            data_path=ROOT_DIR / 'data' / 'waymo',
-            save_path=ROOT_DIR / 'data' / 'waymo',
+            data_path=ROOT_DIR / 'data' / 'waymo_ring',
+            save_path=ROOT_DIR / 'data' / 'waymo_ring',
             raw_data_tag='raw_data',
-            processed_data_tag=args.processed_data_tag
+            processed_data_tag=args.processed_data_tag,
+            use_ring=True
         )
+        # create_waymo_infos(
+        #     dataset_cfg=dataset_cfg,
+        #     class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+        #     data_path=ROOT_DIR / 'data' / 'waymo',
+        #     save_path=ROOT_DIR / 'data' / 'waymo',
+        #     raw_data_tag='raw_data',
+        #     processed_data_tag=args.processed_data_tag,
+        #     use_ring=True
+        # )

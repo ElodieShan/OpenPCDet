@@ -83,6 +83,7 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
     points_NLZ = []
     points_intensity = []
     points_elongation = []
+    points_ring = []
 
     frame_pose = tf.convert_to_tensor(np.reshape(np.array(frame.pose.transform), [4, 4]))
     # [H, W, 6]
@@ -99,8 +100,8 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
         range_image_top_pose_tensor_translation)
 
     for c in calibrations:
-        points_single, cp_points_single, points_NLZ_single, points_intensity_single, points_elongation_single \
-            = [], [], [], [], []
+        points_single, cp_points_single, points_NLZ_single, points_intensity_single, points_elongation_single, points_ring_single \
+            = [], [], [], [], [], []
         for cur_ri_index in ri_index:
             range_image = range_images[c.name][cur_ri_index]
             if len(c.beam_inclinations) == 0:  # pylint: disable=g-explicit-length-test
@@ -135,6 +136,13 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
             range_image_cartesian = tf.squeeze(range_image_cartesian, axis=0)
             points_tensor = tf.gather_nd(range_image_cartesian,
                                          tf.where(range_image_mask))
+            if range_image.shape.dims[0] == 64:
+                range_image_ring = tf.zeros([1,range_image.shape.dims[1]]) + \
+                        tf.reshape(tf.range(1,range_image.shape.dims[0]+1, dtype=range_image_cartesian.dtype),[-1, 1])
+            else:
+                range_image_ring = tf.zeros([range_image.shape.dims[0], range_image.shape.dims[1]],dtype=range_image_cartesian.dtype)
+            points_ring_tensor = tf.gather_nd(range_image_ring[...,None],
+                                         tf.where(range_image_mask)) # for mid-lidar 1-64, for short-lidar 0
             points_NLZ_tensor = tf.gather_nd(range_image_NLZ, tf.compat.v1.where(range_image_mask))
             points_intensity_tensor = tf.gather_nd(range_image_intensity, tf.compat.v1.where(range_image_mask))
             points_elongation_tensor = tf.gather_nd(range_image_elongation, tf.compat.v1.where(range_image_mask))
@@ -147,21 +155,23 @@ def convert_range_image_to_point_cloud(frame, range_images, camera_projections, 
             points_NLZ_single.append(points_NLZ_tensor.numpy())
             points_intensity_single.append(points_intensity_tensor.numpy())
             points_elongation_single.append(points_elongation_tensor.numpy())
+            points_ring_single.append(points_ring_tensor.numpy())
 
         points.append(np.concatenate(points_single, axis=0))
         cp_points.append(np.concatenate(cp_points_single, axis=0))
         points_NLZ.append(np.concatenate(points_NLZ_single, axis=0))
         points_intensity.append(np.concatenate(points_intensity_single, axis=0))
         points_elongation.append(np.concatenate(points_elongation_single, axis=0))
+        points_ring.append(np.concatenate(points_ring_single, axis=0))
 
-    return points, cp_points, points_NLZ, points_intensity, points_elongation
+    return points, cp_points, points_NLZ, points_intensity, points_elongation, points_ring
 
 
-def save_lidar_points(frame, cur_save_path, use_two_returns=True):
+def save_lidar_points(frame, cur_save_path, use_two_returns=True, use_ring=False):
     range_images, camera_projections, range_image_top_pose = \
         frame_utils.parse_range_image_and_camera_projection(frame)
 
-    points, cp_points, points_in_NLZ_flag, points_intensity, points_elongation = convert_range_image_to_point_cloud(
+    points, cp_points, points_in_NLZ_flag, points_intensity, points_elongation, points_ring = convert_range_image_to_point_cloud(
         frame, range_images, camera_projections, range_image_top_pose, ri_index=(0, 1) if use_two_returns else (0,)
     )
 
@@ -170,18 +180,24 @@ def save_lidar_points(frame, cur_save_path, use_two_returns=True):
     points_in_NLZ_flag = np.concatenate(points_in_NLZ_flag, axis=0).reshape(-1, 1)
     points_intensity = np.concatenate(points_intensity, axis=0).reshape(-1, 1)
     points_elongation = np.concatenate(points_elongation, axis=0).reshape(-1, 1)
+    points_ring = np.concatenate(points_ring, axis=0).reshape(-1, 1)
 
     num_points_of_each_lidar = [point.shape[0] for point in points]
-    save_points = np.concatenate([
-        points_all, points_intensity, points_elongation, points_in_NLZ_flag
-    ], axis=-1).astype(np.float32)
+    if use_ring:
+        save_points = np.concatenate([
+            points_all, points_intensity, points_elongation, points_in_NLZ_flag, points_ring
+        ], axis=-1).astype(np.float32)
+    else:
+        save_points = np.concatenate([
+            points_all, points_intensity, points_elongation, points_in_NLZ_flag
+        ], axis=-1).astype(np.float32)
 
     np.save(cur_save_path, save_points)
     # print('saving to ', cur_save_path)
     return num_points_of_each_lidar
 
 
-def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=True):
+def process_single_sequence(sequence_file, save_path, sampled_interval, has_label=True, use_two_returns=True, use_ring=False):
     sequence_name = os.path.splitext(os.path.basename(sequence_file))[0]
 
     # print('Load record (sampled_interval=%d): %s' % (sampled_interval, sequence_name))
@@ -231,7 +247,7 @@ def process_single_sequence(sequence_file, save_path, sampled_interval, has_labe
             info['annos'] = annotations
 
         num_points_of_each_lidar = save_lidar_points(
-            frame, cur_save_dir / ('%04d.npy' % cnt), use_two_returns=use_two_returns
+            frame, cur_save_dir / ('%04d.npy' % cnt), use_two_returns=use_two_returns, use_ring=use_ring
         )
         info['num_points_of_each_lidar'] = num_points_of_each_lidar
 
