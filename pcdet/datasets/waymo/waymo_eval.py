@@ -23,7 +23,7 @@ def limit_period(val, offset=0.5, period=np.pi):
 class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
     WAYMO_CLASSES = ['unknown', 'Vehicle', 'Pedestrian', 'Truck', 'Cyclist']
 
-    def generate_waymo_type_results(self, infos, class_names, is_gt=False, fake_gt_infos=True):
+    def generate_waymo_type_results(self, infos, class_names, is_gt=False, fake_gt_infos=True, sample_type=None):
         def boxes3d_kitti_fakelidar_to_lidar(boxes3d_lidar):
             """
             Args:
@@ -41,11 +41,18 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             if is_gt:
                 box_mask = np.array([n in class_names for n in info['name']], dtype=np.bool_)
                 if 'num_points_in_gt' in info:
-                    zero_difficulty_mask = info['difficulty'] == 0
-                    info['difficulty'][(info['num_points_in_gt'] > 5) & zero_difficulty_mask] = 1
-                    info['difficulty'][(info['num_points_in_gt'] <= 5) & zero_difficulty_mask] = 2
-                    nonzero_mask = info['num_points_in_gt'] > 0
-                    box_mask = box_mask & nonzero_mask
+                    if sample_type is not None and 'num_points_in_gt_sampled' in info:
+                        zero_difficulty_mask = info['difficulty'] == 0
+                        info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] > 5) & zero_difficulty_mask] = 1
+                        info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] <= 5) & zero_difficulty_mask] = 2
+                        nonzero_mask = info['num_points_in_gt_sampled'][sample_type] > 0
+                        box_mask = box_mask & nonzero_mask
+                    else:
+                        zero_difficulty_mask = info['difficulty'] == 0
+                        info['difficulty'][(info['num_points_in_gt'] > 5) & zero_difficulty_mask] = 1
+                        info['difficulty'][(info['num_points_in_gt'] <= 5) & zero_difficulty_mask] = 2
+                        nonzero_mask = info['num_points_in_gt'] > 0
+                        box_mask = box_mask & nonzero_mask
                 else:
                     print('Please provide the num_points_in_gt for evaluating on Waymo Dataset '
                           '(If you create Waymo Infos before 20201126, please re-create the validation infos '
@@ -175,7 +182,7 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
 
         return tuple(ret_ans)
 
-    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True):
+    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True, sample_type=None):
         print('Start the waymo evaluation...')
         assert len(prediction_infos) == len(gt_infos), '%d vs %d' % (prediction_infos.__len__(), gt_infos.__len__())
 
@@ -184,7 +191,7 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             prediction_infos, class_name, is_gt=False
         )
         gt_frameid, gt_boxes3d, gt_type, gt_score, gt_overlap_nlz, gt_difficulty = self.generate_waymo_type_results(
-            gt_infos, class_name, is_gt=True, fake_gt_infos=fake_gt_infos
+            gt_infos, class_name, is_gt=True, fake_gt_infos=fake_gt_infos, sample_type=sample_type
         )
 
         pd_boxes3d, pd_frameid, pd_type, pd_score, pd_overlap_nlz = self.mask_by_distance(
@@ -220,7 +227,9 @@ def main():
     parser.add_argument('--pred_infos', type=str, default=None, help='pickle file')
     parser.add_argument('--gt_infos', type=str, default=None, help='pickle file')
     parser.add_argument('--class_names', type=str, nargs='+', default=['Vehicle', 'Pedestrian', 'Cyclist'], help='')
-    parser.add_argument('--sampled_interval', type=int, default=5, help='sampled interval for GT sequences')
+    parser.add_argument('--sampled_interval', type=int, default=1, help='sampled interval for GT sequences')
+    parser.add_argument('--sample_type', type=str, default=None, help='sample_type in Waymo_v1 Waymo_v2 Waymo_v3')
+
     args = parser.parse_args()
 
     pred_infos = pickle.load(open(args.pred_infos, 'rb'))
@@ -234,9 +243,9 @@ def main():
         cur_info = gt_infos[idx]['annos']
         cur_info['frame_id'] = gt_infos[idx]['frame_id']
         gt_infos_dst.append(cur_info)
-
+    print("sample_type:",args.sample_type)
     waymo_AP = eval.waymo_evaluation(
-        pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False
+        pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False, sample_type=args.sample_type
     )
 
     print(waymo_AP)
