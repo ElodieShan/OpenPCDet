@@ -11,7 +11,9 @@ from google.protobuf import text_format
 from waymo_open_dataset.metrics.python import detection_metrics
 from waymo_open_dataset.protos import metrics_pb2
 import argparse
-
+from pathlib import Path
+import datetime
+from pcdet.utils import common_utils
 
 tf.get_logger().setLevel('INFO')
 
@@ -41,18 +43,16 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             if is_gt:
                 box_mask = np.array([n in class_names for n in info['name']], dtype=np.bool_)
                 if 'num_points_in_gt' in info:
+                    zero_difficulty_mask = info['difficulty'] == 0
+                    info['difficulty'][(info['num_points_in_gt'] > 5) & zero_difficulty_mask] = 1
+                    info['difficulty'][(info['num_points_in_gt'] <= 5) & zero_difficulty_mask] = 2
+                    # info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] > 5) & zero_difficulty_mask] = 1
+                    # info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] <= 5) & zero_difficulty_mask] = 2
                     if sample_type is not None and 'num_points_in_gt_sampled' in info:
-                        zero_difficulty_mask = info['difficulty'] == 0
-                        info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] > 5) & zero_difficulty_mask] = 1
-                        info['difficulty'][(info['num_points_in_gt_sampled'][sample_type] <= 5) & zero_difficulty_mask] = 2
                         nonzero_mask = info['num_points_in_gt_sampled'][sample_type] > 0
-                        box_mask = box_mask & nonzero_mask
                     else:
-                        zero_difficulty_mask = info['difficulty'] == 0
-                        info['difficulty'][(info['num_points_in_gt'] > 5) & zero_difficulty_mask] = 1
-                        info['difficulty'][(info['num_points_in_gt'] <= 5) & zero_difficulty_mask] = 2
                         nonzero_mask = info['num_points_in_gt'] > 0
-                        box_mask = box_mask & nonzero_mask
+                    box_mask = box_mask & nonzero_mask
                 else:
                     print('Please provide the num_points_in_gt for evaluating on Waymo Dataset '
                           '(If you create Waymo Infos before 20201126, please re-create the validation infos '
@@ -201,8 +201,8 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
             distance_thresh, gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty
         )
 
-        print('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
-        print('Level 1: %d, Level2: %d)' % ((gt_difficulty == 1).sum(), (gt_difficulty == 2).sum()))
+        logger.info('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
+        logger.info('Level 1: %d, Level2: %d)' % ((gt_difficulty == 1).sum(), (gt_difficulty == 2).sum()))
 
         if pd_score.max() > 1:
             # assert pd_score.max() <= 1.0, 'Waymo evaluation only supports normalized scores'
@@ -235,7 +235,11 @@ def main():
     pred_infos = pickle.load(open(args.pred_infos, 'rb'))
     gt_infos = pickle.load(open(args.gt_infos, 'rb'))
 
-    print('Start to evaluate the waymo format results...')
+    log_file = Path(args.pred_infos).parent / ('log_eval_%s.txt' % datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    logger = common_utils.create_logger(log_file)
+    logger.setLevel('DEBUG')
+    
+    logger.info('Start to evaluate the waymo format results...')
     eval = OpenPCDetWaymoDetectionMetricsEstimator()
 
     gt_infos_dst = []
@@ -243,10 +247,17 @@ def main():
         cur_info = gt_infos[idx]['annos']
         cur_info['frame_id'] = gt_infos[idx]['frame_id']
         gt_infos_dst.append(cur_info)
+    logger.info("sample_type:%s",%(args.sample_type))
     print("sample_type:",args.sample_type)
     waymo_AP = eval.waymo_evaluation(
         pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False, sample_type=args.sample_type
     )
+
+    ap_result_str = '\n'
+    for key in waymo_AP:
+        waymo_AP[key] = waymo_AP[key][0]
+        ap_result_str += '%s: %.4f \n' % (key, waymo_AP[key])
+    logger.info(ap_result_str)
 
     print(waymo_AP)
 

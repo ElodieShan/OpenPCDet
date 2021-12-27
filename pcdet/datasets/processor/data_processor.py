@@ -153,7 +153,7 @@ class DataProcessor(object):
         data_dict['voxel_num_points'] = num_points
         if '16lines' in data_dict: #elodie
             points_16lines = data_dict['16lines']['points_16lines']
-            voxel_output_16lines = voxel_generator.generate(points_16lines)
+            voxel_output_16lines = self.voxel_generator.generate(points_16lines)
             if isinstance(voxel_output_16lines, dict):
                 voxels_16lines, coordinates_16lines, num_points_16lines = \
                     voxel_output_16lines['voxels'], voxel_output_16lines['coordinates'], voxel_output_16lines['num_points_per_voxel']
@@ -168,7 +168,7 @@ class DataProcessor(object):
             data_dict['16lines']['voxel_num_points'] = num_points_16lines
 
             if 'points_16lines_inbox' in data_dict['16lines']:
-                voxel_output_16lines_inbox = voxel_generator.generate(data_dict['16lines']['points_16lines_inbox'])
+                voxel_output_16lines_inbox = self.voxel_generator.generate(data_dict['16lines']['points_16lines_inbox'])
                 if isinstance(voxel_output_16lines, dict):
                     data_dict['16lines']['voxel_coords_inbox'] = voxel_output_16lines_inbox['coordinates']
                 else:
@@ -211,8 +211,7 @@ class DataProcessor(object):
     def downsample_points_16lines(self, data_dict=None, config=None): 
         if data_dict is None:
             return partial(self.downsample_points_16lines, config=config)
-        # assert "preprocess_type" in data_dict["metadata"], '[Error Elodie] preprocess_type not in data_dict!'
-        assert "data_type" in data_dict["metadata"], '[Error Elodie] data_type not in data_dict!'
+        assert "data_type" in data_dict["metadata"], '[Error Elodie] metadata not in data_dict!'
         assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
         if config.DOWNSAMPLE_POINTS[self.mode] is not True:
             data_dict.pop('ring')
@@ -283,6 +282,28 @@ class DataProcessor(object):
                 ).numpy()
                 data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
         data_dict.pop('lidar_id')
+        return data_dict
+
+    def mask_bboxed_by_min_points(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.mask_bboxed_by_min_points, config=config)
+        # assert "16lines" in data_dict, '[Error Elodie] 16lines not in data_dict!'
+        if config.MASK_ENABLED[self.mode]:
+            gt_boxes_lidar = data_dict['gt_boxes']
+            if config.USE_SAMPLE_POINTS[self.mode]:
+                points_16lines = data_dict['16lines']['points_16lines']
+            else:
+                points_16lines = data_dict['points']
+            num_objects = gt_boxes_lidar.shape[0]
+            corners_lidar = box_utils.boxes_to_corners_3d(gt_boxes_lidar)
+            num_points_in_gt = -np.ones(num_objects, dtype=np.int32)
+
+            for k in range(num_objects):
+                flag = box_utils.in_hull(points_16lines[:, 0:3], corners_lidar[k])
+                num_points_in_gt[k] = flag.sum()
+            data_dict['num_points_in_gt_sampled'][sample_type] = num_points_in_gt
+            mask = num_points_in_gt > 0 
+            data_dict['gt_boxes'] = gt_boxes_lidar[mask]
         return data_dict
 
     def calculate_grid_size(self, data_dict=None, config=None):
