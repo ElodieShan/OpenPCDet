@@ -60,10 +60,10 @@ class KittiDataset(DatasetTemplate):
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_id_list = [x.strip() for x in open(split_dir).readlines()] if split_dir.exists() else None
 
-    def get_lidar(self, idx):
+    def get_lidar(self, idx, num_features=4): # add num_features elodie
         lidar_file = self.root_split_path / 'velodyne' / ('%s.bin' % idx)
         assert lidar_file.exists()
-        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, 4)
+        return np.fromfile(str(lidar_file), dtype=np.float32).reshape(-1, num_features)
 
     def get_image(self, idx):
         """
@@ -237,7 +237,8 @@ class KittiDataset(DatasetTemplate):
             print('gt_database sample: %d/%d' % (k + 1, len(infos)))
             info = infos[k]
             sample_idx = info['point_cloud']['lidar_idx']
-            points = self.get_lidar(sample_idx)
+            num_features = info['point_cloud']['num_features'] if 'num_features' in info['point_cloud'] else 4
+            points = self.get_lidar(sample_idx, num_features=num_features) # elodie
             annos = info['annos']
             names = annos['name']
             difficulty = annos['difficulty']
@@ -358,9 +359,54 @@ class KittiDataset(DatasetTemplate):
 
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names)
+        # ==== for debug elodie.shan ==== 
+        # num = 2
+        # eval_det_annos = eval_det_annos[:num]
+        # eval_gt_annos = eval_gt_annos[:num]
+        
+        if 'ignore_classes' in kwargs and kwargs['ignore_classes']:
+            # Pedestrian,Cyclist --> Car
+            for det_anno in eval_det_annos:
+                det_anno_name = []
+                for i in range(det_anno['name'].shape[0]):
+                    if det_anno['name'][i] != 'Car':
+                        name = 'Car'
+                    else:
+                        name = det_anno['name'][i]
+                    det_anno_name.append(name)
+                det_anno['name'] = np.array(det_anno_name) 
+
+        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True, PR_detail_dict={})
+
 
         return ap_result_str, ap_dict
+
+    def get_detobject_iou(self, det_annos, **kwargs):
+        if 'annos' not in self.kitti_infos[0].keys():
+            return None, {}
+
+        from .kitti_object_eval_python import eval as kitti_eval
+
+        eval_det_annos = copy.deepcopy(det_annos)
+        eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        # num = 2
+        rets = kitti_eval.calculate_iou_partly(eval_det_annos, eval_gt_annos, metric=2, num_parts=100)
+        # print("eval_det_annos:",eval_det_annos[:num])
+        # print("eval_gt_annos:",eval_gt_annos[:num])
+        # print("rets:",rets)
+        # print("rets0:",rets[0])
+        # print("-----------")
+        for i in range(len(eval_det_annos)):
+            ret = rets[0][i]
+            # idx = ret.argmax(axis=-1)
+            iou = ret.max(axis=-1)
+            eval_det_annos[i]['iou'] = iou
+            # print(i,"\n",eval_det_annos[i])
+            # print("ret:",ret)
+            # print("idx:",idx)
+            # print("iou:",iou)
+
+        return eval_det_annos
 
     def __len__(self):
         if self._merge_all_iters_to_one_epoch:
@@ -383,6 +429,7 @@ class KittiDataset(DatasetTemplate):
         input_dict = {
             'frame_id': sample_idx,
             'calib': calib,
+            'metadata': {'data_type':'kitti'},  # elodie metadata
         }
 
         if 'annos' in info:
@@ -405,7 +452,8 @@ class KittiDataset(DatasetTemplate):
                 input_dict['road_plane'] = road_plane
 
         if "points" in get_item_list:
-            points = self.get_lidar(sample_idx)
+            num_features = info['point_cloud']['num_features'] if 'num_features' in info['point_cloud'] else 4
+            points = self.get_lidar(sample_idx, num_features=num_features)
             if self.dataset_cfg.FOV_POINTS_ONLY:
                 pts_rect = calib.lidar_to_rect(points[:, 0:3])
                 fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
@@ -474,6 +522,7 @@ if __name__ == '__main__':
         from pathlib import Path
         from easydict import EasyDict
         dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[2])))
+        # dataset_cfg = EasyDict(yaml.load(open(sys.argv[2]),Loader=yaml.FullLoader)) # elodie
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         create_kitti_infos(
             dataset_cfg=dataset_cfg,

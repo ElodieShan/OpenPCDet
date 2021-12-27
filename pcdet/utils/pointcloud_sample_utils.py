@@ -40,6 +40,13 @@ def downsample_kitti_v2(points, ring, verticle_switch=True, horizontal_switch=Tr
     return points
 
 def downsample_waymo(points, ring, sample_type, verticle_switch=True, horizontal_switch=False):
+    if sample_type == 'Waymo_64'
+        ring_remained = [0]
+        mask = np.in1d(ring,ring_remained)
+        points = points[~mask] # faster
+        ring = ring[~mask]
+        return points
+    
     if sample_type == 'Waymo_v1':
         ring_remained = [18, 20, 22, 24, 26 ,28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48]
     elif sample_type == 'Waymo_v2':
