@@ -228,7 +228,7 @@ class DataProcessor(object):
             return data_dict
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
-        assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2','Waymo_v1', 'Waymo_v2', 'Waymo_v3' ], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
+        assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2','Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
         align_points_switch = config.get('ALIGN_POINTS', False)
         verticle_switch = config.get('VERTICAL_SAMPLE', True)
         horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
@@ -311,7 +311,7 @@ class DataProcessor(object):
             for k in range(num_objects):
                 flag = box_utils.in_hull(points_16lines[:, 0:3], corners_lidar[k])
                 num_points_in_gt[k] = flag.sum()
-            data_dict['num_points_in_gt_sampled'][sample_type] = num_points_in_gt
+            # data_dict['num_points_in_gt_sampled'] = num_points_in_gt
             mask = num_points_in_gt > 0 
             data_dict['gt_boxes'] = gt_boxes_lidar[mask]
         return data_dict
