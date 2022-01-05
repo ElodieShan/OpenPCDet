@@ -34,7 +34,7 @@ if __name__ == '__main__':
     root_path = Path('/home/elodie/OpenPCDet/data/waymo_ring/')
     val_info_path = root_path / 'waymo_ring_processed_data_v0_5_0_infos_val.pkl'
     data_path = root_path / 'waymo_ring_processed_data_v0_5_0'
-    save_val_info_path = root_path / 'waymo_ring_processed_data_v0_5_0_infos_val_sampled_gtnum.pkl'
+    save_val_info_path = root_path / 'waymo_ring_processed_data_v0_5_0_infos_val_sampled_gtnum_add64.pkl'
     with open(val_info_path, 'rb') as f:
         val_info = pickle.load(f)
     
@@ -49,7 +49,7 @@ if __name__ == '__main__':
         anno_info = info['annos']
         anno_info['num_points_in_gt_sampled'] = {}
         num_points_in_gt_ori = anno_info['num_points_in_gt']
-        for sample_type in ['Waymo_v1', 'Waymo_v2', 'Waymo_v3']:
+        for sample_type in ['Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64']:
             points_sampled = pointcloud_sample_utils.downsample_waymo(points, ring, sample_type, verticle_switch=True)
             gt_boxes_lidar = anno_info['gt_boxes_lidar']
     

@@ -5,14 +5,16 @@ import torch.nn.functional as F
 
 
 class WeightedKLDivergenceLoss_v2(nn.Module):
-    def __init__(self, T=1.0, weighted=True):
+    def __init__(self, T=1.0, weighted=True, activated=False):
         super(WeightedKLDivergenceLoss_v2, self).__init__()
         self.T = T
         self.weighted = weighted
+        self.activated = activated
     
-    def forward(self, input: torch.Tensor, target: torch.Tensor, weights: torch.Tensor):
-        input = torch.sigmoid(input)
-        target = torch.sigmoid(target)
+    def forward(self, input: torch.Tensor, target: torch.Tensor, weights=None):
+        if not self.activated:
+            input = torch.sigmoid(input)
+            target = torch.sigmoid(target)
 
         input = F.log_softmax(input/self.T, dim=-1)
         target = F.softmax(target/self.T, dim=-1)
@@ -21,6 +23,7 @@ class WeightedKLDivergenceLoss_v2(nn.Module):
         if self.weighted:
             klloss = klloss* weights
         else:
+            klloss = klloss.reshape([klloss.shape[0],-1])
             klloss = klloss.mean(dim=-1)
         return klloss
 

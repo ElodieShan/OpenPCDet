@@ -247,7 +247,8 @@ def main():
         cur_info = gt_infos[idx]['annos']
         cur_info['frame_id'] = gt_infos[idx]['frame_id']
         gt_infos_dst.append(cur_info)
-    logger.info("sample_type:%s",%(args.sample_type))
+    if args.sample_type is not None:
+        logger.info("sample_type:%s"%(args.sample_type))
     print("sample_type:",args.sample_type)
     waymo_AP = eval.waymo_evaluation(
         pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False, sample_type=args.sample_type

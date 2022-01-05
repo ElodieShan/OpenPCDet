@@ -21,10 +21,43 @@ class CenterPoint(Detector3DTemplate):
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             return pred_dicts, recall_dicts
 
+    # for distillation elodie
+    def forward(self, batch_dict, is_teacher=False, teacher_ret_dict=None, teacher_data_dict=None, is_sub_model=False, batch_dict_sub=None):
+        for cur_module in self.module_list:
+            batch_dict = cur_module(batch_dict)
+
+        if is_teacher:
+            forword_result = self.get_forword_result()
+            return forword_result, batch_dict
+
+        if self.training:
+            loss, tb_dict, disp_dict = self.get_training_loss(teacher_ret_dict=teacher_ret_dict, student_data_dict=batch_dict, teacher_data_dict=teacher_data_dict)
+
+            ret_dict = {
+                'loss': loss
+            }
+            return ret_dict, tb_dict, disp_dict
+        else:
+            pred_dicts, recall_dicts = self.post_processing(batch_dict)
+            return pred_dicts, recall_dicts
+
     def get_training_loss(self):
         disp_dict = {}
 
         loss_rpn, tb_dict = self.dense_head.get_loss()
+        tb_dict = {
+            'loss_rpn': loss_rpn.item(),
+            **tb_dict
+        }
+
+        loss = loss_rpn
+        return loss, tb_dict, disp_dict
+
+    # for distillation elodie
+    def get_training_loss(self, teacher_ret_dict=None, student_data_dict=None, teacher_data_dict=None):
+        disp_dict = {}
+
+        loss_rpn, tb_dict = self.dense_head.get_loss(teacher_ret_dict=teacher_ret_dict, student_data_dict=student_data_dict, teacher_data_dict=teacher_data_dict)
         tb_dict = {
             'loss_rpn': loss_rpn.item(),
             **tb_dict

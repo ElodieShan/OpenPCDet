@@ -28,6 +28,8 @@ class WaymoDataset(DatasetTemplate):
         split_dir = self.root_path / 'ImageSets' / (self.split + '.txt')
         self.sample_sequence_list = [x.strip() for x in open(split_dir).readlines()]
 
+        self.train_for_debug_mode = self.dataset_cfg.get('TRAIN_FOR_DEBUG', False)
+        print("======================\nself.train_for_debug_mode:",self.train_for_debug_mode,"==============")
         self.infos = []
         self.include_waymo_data(self.mode)
 
@@ -52,7 +54,10 @@ class WaymoDataset(DatasetTemplate):
         waymo_infos = []
 
         num_skipped_infos = 0
-        for k in range(len(self.sample_sequence_list)):
+        len_sample_sequence_list = len(self.sample_sequence_list)
+        if self.train_for_debug_mode:
+            len_sample_sequence_list = 2
+        for k in range(len_sample_sequence_list):
             sequence_name = os.path.splitext(self.sample_sequence_list[k])[0]
             info_path = self.data_path / sequence_name / ('%s.pkl' % sequence_name)
             info_path = self.check_sequence_name_with_all_version(info_path)
