@@ -125,11 +125,12 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
     sec_per_example = (time.time() - start_time) / len(dataloader.dataset)
     logger.info('Generate label finished(sec_per_example: %.4f second).' % sec_per_example)
     # cls recall & precision
-    logger.info("\n==================== Anchor Cls Result =================")
-    logger.info("              Car     Pedestrian      Cyclist")
-    logger.info("recall:   %.2f    %.2f        %.2f"%(ret_dict['cls_recall'][0], ret_dict['cls_recall'][1], ret_dict['cls_recall'][2]))
-    logger.info("precison: %.2f    %.2f        %.2f "%(ret_dict['cls_precision'][0], ret_dict['cls_precision'][1], ret_dict['cls_precision'][2]))
-    logger.info("=======================================================\n")
+    if 'cls_recall' in ret_dict:
+        logger.info("\n==================== Anchor Cls Result =================")
+        logger.info("              Car     Pedestrian      Cyclist")
+        logger.info("recall:   %.2f    %.2f        %.2f"%(ret_dict['cls_recall'][0], ret_dict['cls_recall'][1], ret_dict['cls_recall'][2]))
+        logger.info("precison: %.2f    %.2f        %.2f "%(ret_dict['cls_precision'][0], ret_dict['cls_precision'][1], ret_dict['cls_precision'][2]))
+        logger.info("=======================================================\n")
 
     if cfg.LOCAL_RANK != 0:
         return {}

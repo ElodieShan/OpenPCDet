@@ -149,6 +149,7 @@ class CenterHead(nn.Module):
             self.cls_soft_loss_modify = soft_losses_cfg.CLS_LOSS.get('MODIFY', None)
             self.cls_soft_loss_source = soft_losses_cfg.CLS_LOSS.get('SOURCE', None)
             self.cls_use_teacher_t_only = soft_losses_cfg.CLS_LOSS.get('ONLY_USE_TRUE_RET', False)
+            self.cls_target_ignore = soft_losses_cfg.CLS_LOSS.get('TARGET_IGNORE', False)
             self.cls_soft_loss_source_weights = soft_losses_cfg.CLS_LOSS.get('SOURCE_WEIGHTS', None)
             if self.cls_soft_loss_source_weights is None and self.cls_soft_loss_source is not None:
                 self.cls_soft_loss_source_weights = np.ones(len(self.cls_soft_loss_source))
@@ -318,7 +319,9 @@ class CenterHead(nn.Module):
 
             loss += hm_loss + loc_loss
             tb_dict['hm_loss_head_%d' % idx] = hm_loss.item()
+            tb_dict['hm_hard_loss_head_%d' % idx] = hm_loss.item()
             tb_dict['loc_loss_head_%d' % idx] = loc_loss.item()
+            tb_dict['loc_hard_loss_head_%d' % idx] = loc_loss.item()
 
         tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
@@ -432,20 +435,25 @@ class CenterHead(nn.Module):
                                 torch.full_like(target,1), torch.full_like(target,0))
         # pos_normalizer
         target_pos = torch.where(target==1,\
-                                torch.full_like(target,1), torch.full_like(target,0)).sum(3)
-        pos_normalizer = target_pos/torch.clamp(target_pos.sum((1,2), keepdim=True), min=1.0)
+                                torch.full_like(target,1), torch.full_like(target,0))
+        if self.cls_target_ignore:
+            stu_pred_res =  1 - torch.all(stu_pred_out == target_pos, dim=3).float()
+            positives_t_tp_tn =  torch.all(teach_pred_out == target_pos, dim=3).float()
+        else:
+            # student false positive or negetive
+            stu_pred_res =  1 - torch.all(stu_pred_out == target_pos_t, dim=3).float()
+            # teacher true p or n
+            positives_t_tp_tn =  torch.all(teach_pred_out == target_pos_t, dim=3).float()
 
-        self.soft_loss_weights['weights_gt'] = pos_normalizer
-        # student false positive or negetive
-        stu_pred_res =  1 - torch.all(stu_pred_out == target_pos_t, dim=3).float()
         weights_sf = stu_pred_res / torch.clamp(stu_pred_res.sum((1,2), keepdim=True), min=1.0)
-        # teacher true p or n
-        positives_t_tp_tn =  torch.all(teach_pred_out == target_pos_t, dim=3).float()
 
         if self.cls_use_teacher_t_only:
             weights_sf = weights_sf * positives_t_tp_tn
-        
         self.soft_loss_weights['weights_sf'] = weights_sf
+
+        target_pos = target_pos.sum(3)
+        pos_normalizer = target_pos/torch.clamp(target_pos.sum((1,2), keepdim=True), min=1.0)
+        self.soft_loss_weights['weights_gt'] = pos_normalizer
 
         if self.cls_soft_loss_source is None:
             weights = pos_normalizer

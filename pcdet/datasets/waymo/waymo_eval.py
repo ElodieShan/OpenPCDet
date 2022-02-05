@@ -182,7 +182,7 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
 
         return tuple(ret_ans)
 
-    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True, sample_type=None):
+    def waymo_evaluation(self, prediction_infos, gt_infos, class_name, distance_thresh=100, fake_gt_infos=True, sample_type=None, logger=None):
         print('Start the waymo evaluation...')
         assert len(prediction_infos) == len(gt_infos), '%d vs %d' % (prediction_infos.__len__(), gt_infos.__len__())
 
@@ -200,9 +200,12 @@ class OpenPCDetWaymoDetectionMetricsEstimator(tf.test.TestCase):
         gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty = self.mask_by_distance(
             distance_thresh, gt_boxes3d, gt_frameid, gt_type, gt_score, gt_difficulty
         )
-
-        logger.info('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
-        logger.info('Level 1: %d, Level2: %d)' % ((gt_difficulty == 1).sum(), (gt_difficulty == 2).sum()))
+        if logger is not None:
+            logger.info('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
+            logger.info('Level 1: %d, Level2: %d)' % ((gt_difficulty == 1).sum(), (gt_difficulty == 2).sum()))
+        else:
+            print('Number: (pd, %d) VS. (gt, %d)' % (len(pd_boxes3d), len(gt_boxes3d)))
+            print('Level 1: %d, Level2: %d)' % ((gt_difficulty == 1).sum(), (gt_difficulty == 2).sum()))
 
         if pd_score.max() > 1:
             # assert pd_score.max() <= 1.0, 'Waymo evaluation only supports normalized scores'
@@ -247,11 +250,10 @@ def main():
         cur_info = gt_infos[idx]['annos']
         cur_info['frame_id'] = gt_infos[idx]['frame_id']
         gt_infos_dst.append(cur_info)
-    if args.sample_type is not None:
-        logger.info("sample_type:%s"%(args.sample_type))
+    logger.info("sample_type:%s"%(args.sample_type))
     print("sample_type:",args.sample_type)
     waymo_AP = eval.waymo_evaluation(
-        pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False, sample_type=args.sample_type
+        pred_infos, gt_infos_dst, class_name=args.class_names, distance_thresh=1000, fake_gt_infos=False, sample_type=args.sample_type, logger=logger
     )
 
     ap_result_str = '\n'
