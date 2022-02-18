@@ -215,16 +215,20 @@ class WaymoDataset(DatasetTemplate):
                 annos['name'] = annos['name'][mask]
                 gt_boxes_lidar = gt_boxes_lidar[mask]
                 annos['num_points_in_gt'] = annos['num_points_in_gt'][mask]
+                annos['obj_ids'] = annos['obj_ids'][mask]
 
             input_dict.update({
                 'gt_names': annos['name'],
                 'gt_boxes': gt_boxes_lidar,
-                'num_points_in_gt': annos.get('num_points_in_gt', None)
+                'num_points_in_gt': annos.get('num_points_in_gt', None),
+                'gt_obj_ids': annos['obj_ids'] #elodie 0703
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)
         data_dict['metadata'] = info.get('metadata', info['frame_id'])
         data_dict.pop('num_points_in_gt', None)
+        data_dict.pop('gt_obj_ids', None)
+
         return data_dict
 
     @staticmethod
@@ -306,7 +310,8 @@ class WaymoDataset(DatasetTemplate):
 
             ap_dict = eval.waymo_evaluation(
                 eval_det_annos, eval_gt_annos, class_name=class_names,
-                distance_thresh=1000, fake_gt_infos=self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False)
+                distance_thresh=1000, fake_gt_infos=self.dataset_cfg.get('INFO_WITH_FAKELIDAR', False),
+                logger=self.logger
             )
             ap_result_str = '\n'
             for key in ap_dict:
