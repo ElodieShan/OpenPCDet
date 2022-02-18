@@ -11,7 +11,7 @@ try:
 except:
     pass
 
-
+import copy
 class VoxelGeneratorWrapper():
     def __init__(self, vsize_xyz, coors_range_xyz, num_point_features, max_num_points_per_voxel, max_num_voxels):
         try:
@@ -50,7 +50,7 @@ class VoxelGeneratorWrapper():
             else:
                 voxels, coordinates, num_points = voxel_output
         else:
-            assert tv is not None, f"Unexpected error, library: 'cumm' wasn't imported properly."
+            assert tv is not None, "Unexpected error, library: 'cumm' wasn't imported properly."
             voxel_output = self._voxel_generator.point_to_voxel(tv.from_numpy(points))
             tv_voxels, tv_coordinates, tv_num_points = voxel_output
             # make copy with numpy(), since numpy_view() will disappear as soon as the generator is deleted
@@ -61,13 +61,14 @@ class VoxelGeneratorWrapper():
 
 
 class DataProcessor(object):
-    def __init__(self, processor_configs, point_cloud_range, training, num_point_features):
+    def __init__(self, processor_configs, point_cloud_range, training, num_point_features, root_path=None):
         self.point_cloud_range = point_cloud_range
         self.training = training
         self.num_point_features = num_point_features
         self.mode = 'train' if training else 'test'
         self.grid_size = self.voxel_size = None
         self.data_processor_queue = []
+        self.root_path = root_path
 
         self.voxel_generator = None
 
@@ -82,6 +83,9 @@ class DataProcessor(object):
         if data_dict.get('points', None) is not None:
             mask = common_utils.mask_points_by_range(data_dict['points'], self.point_cloud_range)
             data_dict['points'] = data_dict['points'][mask]
+        if data_dict.get('dense', None) is not None:
+            mask_dense = common_utils.mask_points_by_range(data_dict['dense']['points_dense'], self.point_cloud_range)
+            data_dict['dense']['points_dense'] = data_dict['dense']['points_dense'][mask_dense]
         if 'ring' in data_dict:
             data_dict['ring'] = data_dict['ring'][mask]
         if 'lidar_id' in data_dict:
@@ -91,19 +95,23 @@ class DataProcessor(object):
                 data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1)
             )
             data_dict['gt_boxes'] = data_dict['gt_boxes'][mask]
+            data_dict['gt_obj_ids'] = data_dict['gt_obj_ids'][mask]
         return data_dict
 
+    def shuffle_points_unit(self, points):
+        shuffle_idx = np.random.permutation(points.shape[0])
+        return points[shuffle_idx]
+        
     def shuffle_points(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.shuffle_points, config=config)
 
-        low_res_shuffle = config.get('LOW_RES_SHUFFLE_ENABLED', None)
-        if low_res_shuffle is not None and low_res_shuffle[self.mode]:
+        mimic_shuffle = config.get('MIMIC_SHUFFLE_ENABLED', None)
+        if mimic_shuffle is not None and mimic_shuffle[self.mode]:
             if '16lines' in data_dict: #elodie
-                points_16lines = data_dict['16lines']['points_16lines']
-                shuffle_idx_16lines = np.random.permutation(points_16lines.shape[0])
-                points_16lines = points_16lines[shuffle_idx_16lines]
-                data_dict['16lines']['points_16lines'] = points_16lines
+                data_dict['16lines']['points_16lines'] = self.shuffle_points_unit(data_dict['16lines']['points_16lines'])
+            if 'dense' in data_dict: #elodie
+                data_dict['dense']['points_dense'] = self.shuffle_points_unit(data_dict['dense']['points_dense'])
 
         if "16lines" in data_dict and "extra_points_16lines" in data_dict["16lines"]:
             if config.SHUFFLE_ENABLED[self.mode]:
@@ -133,6 +141,31 @@ class DataProcessor(object):
         
         return data_dict
         
+    def transform_points_to_voxels_mimic(self, mimic_key, data_dict=None):
+        if mimic_key in data_dict:
+            points_name = "points_%s"%(mimic_key)
+            points_mimic = data_dict[mimic_key][points_name]
+            voxel_output_mimic = self.voxel_generator.generate(points_mimic)
+            if isinstance(voxel_output_mimic, dict):
+                voxels_mimic, coordinates_mimic, num_points_mimic = \
+                    voxel_output_mimic['voxels'], voxel_output_mimic['coordinates'], voxel_output_mimic['num_points_per_voxel']
+            else:
+                voxels_mimic, coordinates_mimic, num_points_mimic = voxel_output_mimic
+            
+            if not data_dict['use_lead_xyz']:
+                voxels_mimic = voxels_mimic[..., 3:]  # remove xyz in voxels(N, 3)
+
+            data_dict[mimic_key]['voxels'] = voxels_mimic
+            data_dict[mimic_key]['voxel_coords'] = coordinates_mimic
+            data_dict[mimic_key]['voxel_num_points'] = num_points_mimic
+
+            if 'points_16lines_inbox' in data_dict[mimic_key]:
+                voxel_output_mimic_inbox = self.voxel_generator.generate(data_dict[mimic_key]['points_16lines_inbox'])
+                if isinstance(voxel_output_mimic, dict):
+                    data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox['coordinates']
+                else:
+                    data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox[1]
+    
     def transform_points_to_voxels(self, data_dict=None, config=None):
         if data_dict is None:
             grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(config.VOXEL_SIZE)
@@ -161,28 +194,11 @@ class DataProcessor(object):
         data_dict['voxels'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
+        
         if '16lines' in data_dict: #elodie
-            points_16lines = data_dict['16lines']['points_16lines']
-            voxel_output_16lines = self.voxel_generator.generate(points_16lines)
-            if isinstance(voxel_output_16lines, dict):
-                voxels_16lines, coordinates_16lines, num_points_16lines = \
-                    voxel_output_16lines['voxels'], voxel_output_16lines['coordinates'], voxel_output_16lines['num_points_per_voxel']
-            else:
-                voxels_16lines, coordinates_16lines, num_points_16lines = voxel_output_16lines
-            
-            if not data_dict['use_lead_xyz']:
-                voxels_16lines = voxels_16lines[..., 3:]  # remove xyz in voxels(N, 3)
-
-            data_dict['16lines']['voxels'] = voxels_16lines
-            data_dict['16lines']['voxel_coords'] = coordinates_16lines
-            data_dict['16lines']['voxel_num_points'] = num_points_16lines
-
-            if 'points_16lines_inbox' in data_dict['16lines']:
-                voxel_output_16lines_inbox = self.voxel_generator.generate(data_dict['16lines']['points_16lines_inbox'])
-                if isinstance(voxel_output_16lines, dict):
-                    data_dict['16lines']['voxel_coords_inbox'] = voxel_output_16lines_inbox['coordinates']
-                else:
-                    data_dict['16lines']['voxel_coords_inbox'] = voxel_output_16lines_inbox[1]
+            self.transform_points_to_voxels_mimic(mimic_key='16lines', data_dict=data_dict)
+        if 'dense' in data_dict: #elodie
+            self.transform_points_to_voxels_mimic(mimic_key='dense', data_dict=data_dict)
         return data_dict
 
     def sample_points(self, data_dict=None, config=None):
@@ -315,6 +331,66 @@ class DataProcessor(object):
             mask = num_points_in_gt > 0 
             data_dict['gt_boxes'] = gt_boxes_lidar[mask]
         return data_dict
+
+    def complish_gt_points(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.complish_gt_points, config=config)
+        assert "gt_obj_ids" in data_dict, '[Error Elodie] gt_obj_ids not in data_dict!'
+        
+        if config.COMPLISH_ENABLED[self.mode]:
+            points = data_dict['points']
+            # points = box_utils.remove_points_in_boxes3d(points, data_dict['gt_boxes'])
+            completed_points_all = None
+            for box, obj_id_key,num_points_in_gt in zip(data_dict['gt_boxes'], data_dict['gt_obj_ids'],data_dict['num_points_in_gt']):
+                # if num_points_in_gt > config.NUM_POINTS_GT:
+                    # continue
+                try:
+                    filename = '%s.bin' % (obj_id_key)
+                    file_path = self.root_path /  config.DIRNAME / filename
+                    completed_points = np.fromfile(str(file_path), dtype=np.float32).reshape(
+                            [-1, config.NUM_POINT_FEATURES])
+                    if config.RANDOM_SAMPLE:
+                        num_points = config.NUM_POINTS
+                        if num_points < completed_points.shape[0]:
+                            choice = np.arange(0, completed_points.shape[0], dtype=np.int32)
+                            choice = np.random.choice(choice, num_points, replace=False)
+                            completed_points = completed_points[choice]
+                    completed_points = common_utils.rotate_points_along_z(completed_points[np.newaxis, :, :], np.array([box[6]]))[0]
+                    completed_points[:, :3] += box[:3]
+                    if completed_points_all is None:
+                        completed_points_all = completed_points
+                    else:
+                        completed_points_all = np.vstack((completed_points_all, completed_points))
+                except:
+                    pass
+            if completed_points_all is not None:
+                points_compt = np.concatenate([completed_points_all, points], axis=0)
+            else:
+                points_compt = points
+
+            if config.REPLACE_ORI_POINTS[self.mode]:
+                data_dict['points'] = points_compt
+            else:
+                data_dict['dense'] = {}
+                data_dict['dense']['points_dense'] = points_compt
+        return data_dict
+    
+    def concat_completed_points(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.concat_completed_points, config=config)
+        
+        if config.CONCAT_ENABLED[self.mode]:
+            assert "dense" in data_dict, '[Error Elodie] dense not in data_dict!'
+            assert "points_ori_num" in data_dict["dense"], '[Error Elodie] points_ori_num not in data_dict[dense]!'
+            points = data_dict['points']
+            points_ori_num = data_dict['dense']['points_ori_num']
+            data_dict['dense']['points_dense'] = points
+            data_dict['points'] = points[:points_ori_num]
+
+            if 'ring' in data_dict:
+                data_dict['ring'] = data_dict['ring'][:points_ori_num]
+        return data_dict
+
 
     def calculate_grid_size(self, data_dict=None, config=None):
         if data_dict is None:

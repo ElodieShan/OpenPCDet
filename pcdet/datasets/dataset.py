@@ -9,7 +9,6 @@ from .augmentor.data_augmentor import DataAugmentor
 from .processor.data_processor import DataProcessor
 from .processor.point_feature_encoder import PointFeatureEncoder
 
-
 class DatasetTemplate(torch_data.Dataset):
     def __init__(self, dataset_cfg=None, class_names=None, training=True, root_path=None, logger=None):
         super().__init__()
@@ -21,7 +20,7 @@ class DatasetTemplate(torch_data.Dataset):
         self.logger = logger
         if self.dataset_cfg is None or class_names is None:
             return
-
+        # self.id_all=0
         self.point_cloud_range = np.array(self.dataset_cfg.POINT_CLOUD_RANGE, dtype=np.float32)
         self.point_feature_encoder = PointFeatureEncoder(
             self.dataset_cfg.POINT_FEATURE_ENCODING,
@@ -32,7 +31,8 @@ class DatasetTemplate(torch_data.Dataset):
         ) if self.training else None
         self.data_processor = DataProcessor(
             self.dataset_cfg.DATA_PROCESSOR, point_cloud_range=self.point_cloud_range,
-            training=self.training, num_point_features=self.point_feature_encoder.num_point_features
+            training=self.training, num_point_features=self.point_feature_encoder.num_point_features,
+            root_path=self.root_path
         )
 
         self.grid_size = self.data_processor.grid_size
@@ -133,12 +133,16 @@ class DatasetTemplate(torch_data.Dataset):
 
         if data_dict.get('gt_boxes', None) is not None:
             selected = common_utils.keep_arrays_by_name(data_dict['gt_names'], self.class_names)
+            if data_dict['gt_obj_ids'].shape[0] != data_dict['gt_boxes'].shape[0]:
+                print(data_dict['gt_obj_ids'].shape, data_dict['gt_boxes'].shape)
             data_dict['gt_boxes'] = data_dict['gt_boxes'][selected]
             data_dict['gt_names'] = data_dict['gt_names'][selected]
             gt_classes = np.array([self.class_names.index(n) + 1 for n in data_dict['gt_names']], dtype=np.int32)
             gt_boxes = np.concatenate((data_dict['gt_boxes'], gt_classes.reshape(-1, 1).astype(np.float32)), axis=1)
             data_dict['gt_boxes'] = gt_boxes
-
+            
+            data_dict['gt_obj_ids'] = data_dict['gt_obj_ids'][selected]
+            # data_dict['num_points_in_gt'] = data_dict['num_points_in_gt'][selected]
             if data_dict.get('gt_boxes2d', None) is not None:
                 data_dict['gt_boxes2d'] = data_dict['gt_boxes2d'][selected]
 
@@ -148,6 +152,11 @@ class DatasetTemplate(torch_data.Dataset):
         data_dict = self.data_processor.forward(
             data_dict=data_dict
         )
+
+        # import pickle
+        # with open("/home/elodie/OpenPCDet/1/%s.pkl"%(self.id_all), "wb") as f:
+        #     pickle.dump(data_dict, f)
+        # self.id_all += 1
 
         if self.training and len(data_dict['gt_boxes']) == 0:
             new_index = np.random.randint(self.__len__())
@@ -187,23 +196,23 @@ class DatasetTemplate(torch_data.Dataset):
                         coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
                         coors.append(coor_pad)
                     ret[key] = np.concatenate(coors, axis=0)
-                elif key in ['16lines']: # elodie
-                    ret['16lines'] = {}
+                elif key in ['16lines', 'dense']: # elodie
+                    ret[key] = {}
                     if isinstance (val,list):
                         val = val[0]
                     # print("val:",val)
                     for key_16lines, val_16lines in val.items():
                         if key_16lines in ['voxels', 'voxel_num_points']:
-                            ret['16lines'][key_16lines] = np.concatenate(val_16lines, axis=0)
+                            ret[key][key_16lines] = np.concatenate(val_16lines, axis=0)
 
-                        elif key_16lines in ['points_16lines', 'voxel_coords', 'voxel_coords_inbox']:
+                        elif key_16lines in ['points_16lines', 'points_dense', 'voxel_coords', 'voxel_coords_inbox']:
                             # print("key_16lines in ['points', 'voxel_coords'] start",key_16lines)
                             # print(key_16lines, "ori val_16lines:",val_16lines)
                             coors = []
                             for i, coor in enumerate(val_16lines):
                                 coor_pad = np.pad(coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
                                 coors.append(coor_pad)
-                            ret['16lines'][key_16lines] = np.concatenate(coors, axis=0)
+                            ret[key][key_16lines] = np.concatenate(coors, axis=0)
                             # print("key_16lines in ['points', 'voxel_coords'] end",key_16lines)
                 elif key in ['gt_boxes']:
                     max_gt = max([len(x) for x in val])
