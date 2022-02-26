@@ -204,27 +204,29 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         ret_dict.pop('PR_detail_dict')
     
     # ignore_class
-    _, result_dict_ignore_class = dataset.evaluation(
-        det_annos, class_names,
-        eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
-        output_path=final_output_dir,
-        ignore_classes=True
-    )
-    if 'min_thresh_ret' in result_dict_ignore_class:
-        cls_recall = result_dict_ignore_class['min_thresh_ret']['recall_min_thresh']*100
-        cls_precision = result_dict_ignore_class['min_thresh_ret']['precision_min_thresh']*100
-        logger.info("\n==================== Ignore Class - Precision & Recall Result =================")
-        overlap = np.array([[0.7,0.5,0.5],
-                            [0.5,0.25,0.25],
-                            [0.4,0.4,0.4],
-                            [0.2,0.1,0.1],
-                            [0.0,0.0,0.0]])
-        idx = np.array([4,3,2,1,0])
-        logger.info("              Easy     Mod      Hard")
-        for i in idx:
-            logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,0], cls_recall[0,0,i], cls_recall[0,1,i], cls_recall[0,2,i]))
-            logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,0],cls_precision[0,0,i], cls_precision[0,1,i], cls_precision[0,2,i]))
-        logger.info("===============================================================\n")
+    ignore_class_switch = False
+    if ignore_class_switch:
+        _, result_dict_ignore_class = dataset.evaluation(
+            det_annos, class_names,
+            eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
+            output_path=final_output_dir,
+            ignore_classes=True
+        )
+        if 'min_thresh_ret' in result_dict_ignore_class:
+            cls_recall = result_dict_ignore_class['min_thresh_ret']['recall_min_thresh']*100
+            cls_precision = result_dict_ignore_class['min_thresh_ret']['precision_min_thresh']*100
+            logger.info("\n==================== Ignore Class - Precision & Recall Result =================")
+            overlap = np.array([[0.7,0.5,0.5],
+                                [0.5,0.25,0.25],
+                                [0.4,0.4,0.4],
+                                [0.2,0.1,0.1],
+                                [0.0,0.0,0.0]])
+            idx = np.array([4,3,2,1,0])
+            logger.info("              Easy     Mod      Hard")
+            for i in idx:
+                logger.info("recall@%.1f:   %.2f    %.2f    %.2f"%(overlap[i,0], cls_recall[0,0,i], cls_recall[0,1,i], cls_recall[0,2,i]))
+                logger.info("precison@%.1f: %.2f    %.2f    %.2f \n"%(overlap[i,0],cls_precision[0,0,i], cls_precision[0,1,i], cls_precision[0,2,i]))
+            logger.info("===============================================================\n")
 
     logger.info('****************Evaluation done.*****************')
     return ret_dict

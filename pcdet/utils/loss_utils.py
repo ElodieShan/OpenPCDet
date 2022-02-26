@@ -69,7 +69,7 @@ class SigmoidFocalClassificationLoss(nn.Module):
 
         assert weights.shape.__len__() == loss.shape.__len__()
 
-        return loss * weights
+        return loss * weights, focal_weight
 
 
 class WeightedSmoothL1Loss(nn.Module):
@@ -261,7 +261,7 @@ def compute_fg_mask(gt_boxes2d, shape, downsample_factor=1, device=torch.device(
     return fg_mask
 
 
-def neg_loss_cornernet(pred, gt, mask=None):
+def neg_loss_cornernet(pred, gt, mask=None, return_weights=False):
     """
     Refer to https://github.com/tianweiy/CenterPoint.
     Modified focal loss. Exactly the same as CornerNet. Runs faster and costs a little bit more memory
@@ -280,7 +280,7 @@ def neg_loss_cornernet(pred, gt, mask=None):
 
     pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
     neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
-
+    
     if mask is not None:
         mask = mask[:, None, :, :].float()
         pos_loss = pos_loss * mask
@@ -296,6 +296,18 @@ def neg_loss_cornernet(pred, gt, mask=None):
         loss = loss - neg_loss
     else:
         loss = loss - (pos_loss + neg_loss) / num_pos
+    # print("pos_loss:", pos_loss, "neg_loss:", neg_loss, "loss:", loss)
+    # for distillation
+    if return_weights:
+        # focal_weights = torch.pow(1 - pred, 2) * pos_inds + torch.pow(pred, 2) * neg_weights * neg_inds
+        focal_weights = torch.pow(pred, 2) * neg_weights * neg_inds
+
+        if mask is not None:
+            focal_weights = focal_weights * mask
+        if num_pos > 0:
+            focal_weights = focal_weights / num_pos
+        return loss, focal_weights
+
     return loss
 
 
@@ -303,12 +315,13 @@ class FocalLossCenterNet(nn.Module):
     """
     Refer to https://github.com/tianweiy/CenterPoint
     """
-    def __init__(self):
+    def __init__(self, return_weights=False):
         super(FocalLossCenterNet, self).__init__()
         self.neg_loss = neg_loss_cornernet
+        self.return_weights = return_weights
 
     def forward(self, out, target, mask=None):
-        return self.neg_loss(out, target, mask=mask)
+        return self.neg_loss(out, target, mask=mask, return_weights=self.return_weights)
 
 
 def _reg_loss(regr, gt_regr, mask):

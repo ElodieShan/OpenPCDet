@@ -8,7 +8,6 @@ from .target_assigner.anchor_generator import AnchorGenerator
 from .target_assigner.atss_target_assigner import ATSSTargetAssigner
 from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
 
-
 class AnchorHeadTemplate(nn.Module):
     def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training, voxel_size, cls_score_thred=None):
         super().__init__()
@@ -174,65 +173,18 @@ class AnchorHeadTemplate(nn.Module):
 
             self.add_module(
                 'soft_hint_loss_func',
-                getattr(loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature, normalize=hint_normalize)
+                getattr(mimic_loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature, normalize=hint_normalize)
             )
             self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
             self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
             self.hint_feature_weights = soft_losses_cfg.HINT_LOSS.get('FEATURE_WEIGHTS', None)
             if self.hint_feature_weights is None:
                 self.hint_feature_weights = np.ones(len(self.hint_feature_list))
-            self.hint_gt_only = soft_losses_cfg.HINT_LOSS.get('GT_ONLY', False)
-            self.random_select_bg = soft_losses_cfg.HINT_LOSS.get('RANDOM_SELECT_BG', False)
-            self.hint_random_sample_feature = soft_losses_cfg.HINT_LOSS.get('RANDOM_SAMPLE_FEATURE', False)
             self.seg_batch = soft_losses_cfg.HINT_LOSS.get('SEG_BATCH', False)
             self.hint_soft_loss_source = soft_losses_cfg.HINT_LOSS.get('SOURCE', None)
             self.hint_soft_loss_source_weights = soft_losses_cfg.HINT_LOSS.get('SOURCE_WEIGHTS', None)
             if self.hint_soft_loss_source_weights is None and self.hint_soft_loss_source is not None:
                 self.hint_soft_loss_source_weights = np.ones(len(self.hint_soft_loss_source))
-
-            self.feature_map_cfg = soft_losses_cfg.HINT_LOSS.get('FEATURE_MAPPING',None)
-            self.feature_attention_cfg = soft_losses_cfg.HINT_LOSS.get('FEATURE_ATTENTION',None)
-            self.feature_sa_cfg = soft_losses_cfg.HINT_LOSS.get('FEATURE_SAMPLE_POOL',None)
-
-            if self.feature_map_cfg is not None:
-                assert self.feature_attention_cfg is None, 'FEATURE_ATTENTION is not None when using FEATURE_MAPPING'
-                assert self.feature_sa_cfg is None, 'FEATURE_SAMPLE_POOL is not None when using FEATURE_MAPPING'
-
-                self.student_feature_map = soft_losses_cfg.HINT_LOSS.get('STUDENT_MAPPING',True)
-                self.teacher_feature_map = soft_losses_cfg.HINT_LOSS.get('TEACHER_MAPPING',True)
-                for feature_ in self.hint_feature_list:
-                    cfg_ = self.feature_map_cfg[feature_]
-                    if self.teacher_feature_map:
-                        self.add_module(
-                            "teacher_map_" + feature_,
-                            MappingBlock(cfg_['CHANNEL'][0], cfg_['CHANNEL'][1], mid_channels=cfg_.get('MID_CHANNEL',None), kernel_size=cfg_['KERNEL'], stride=cfg_['STRIDE'])
-                        )
-                    if self.student_feature_map:
-                        self.add_module(
-                            "student_map_" + feature_,
-                            MappingBlock(cfg_['CHANNEL'][0], cfg_['CHANNEL'][1], mid_channels=cfg_.get('MID_CHANNEL',None), kernel_size=cfg_['KERNEL'], stride=cfg_['STRIDE'])
-                        )
-
-            if self.feature_attention_cfg is not None:
-                assert self.feature_sa_cfg is None, 'FEATURE_SAMPLE_POOL is not None when using FEATURE_MAPPING'
-                for feature_ in self.hint_feature_list:
-                    cfg_ = self.feature_attention_cfg[feature_]
-                    self.add_module(
-                        "teacher_att_" + feature_,
-                        AttentionBlock(embed_dim=cfg_['EMBED_DIM'], num_heads=4)
-                    )
-
-            if self.feature_sa_cfg is not None:
-                for feature_ in self.hint_feature_list:
-                    cfg_ = self.feature_sa_cfg[feature_]
-                    self.add_module(
-                        "teacher_sa_" + feature_,
-                        StackMAXPOOLModuleMSG(
-                            radii=cfg_['POOL_RADIUS'], 
-                            nsamples=cfg_['NSAMPLE'],
-                            pool_method=cfg_.get('POOL_METHOD','max_pool'),
-                            )
-                    )
 
     def assign_targets(self, gt_boxes):
         """
@@ -310,97 +262,103 @@ class AnchorHeadTemplate(nn.Module):
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
         one_hot_targets = one_hot_targets[..., 1:]
-        cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
+        cls_loss_src, focal_weights = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
         cls_loss = cls_loss_src.sum() / batch_size
-
+        tb_dict_soft = {
+                'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
+        }
         # -----------------------------Student Classification Result
         # Student False Positive:  True Positive >0, False Positive <0 elodie
+        calculate_student_res = False
+        if calculate_student_res:
+            cls_preds_student_activated = torch.sigmoid(cls_preds)
+            cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_activated>self.cls_score_thred,\
+                                    torch.full_like(cls_preds_student_activated,1), torch.full_like(cls_preds_student_activated,0))
+            cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
+            cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
+            cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
 
-        cls_preds_student_activated = torch.sigmoid(cls_preds)
-        cls_preds_student_one_hot_wo_bg =  torch.where(cls_preds_student_activated>self.cls_score_thred,\
-                                torch.full_like(cls_preds_student_activated,1), torch.full_like(cls_preds_student_activated,0))
-        cls_preds_student_maxarg = cls_preds_student_one_hot_wo_bg.argmax(dim=-1)+1
-        cls_preds_student_one_hot_wo_bg_sum = cls_preds_student_one_hot_wo_bg.sum(dim=-1)
-        cls_preds_student_maxarg = torch.where(cls_preds_student_one_hot_wo_bg_sum>0, cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,0))
+            cls_preds_student_ret = torch.where(cls_preds_student_maxarg==cls_targets.long(), cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,-1, dtype=cls_preds_student_maxarg.dtype))
 
-        cls_preds_student_ret = torch.where(cls_preds_student_maxarg==cls_targets.long(), cls_preds_student_maxarg, torch.full_like(cls_preds_student_maxarg,-1, dtype=cls_preds_student_maxarg.dtype))
+            positives_student_preds = cls_preds_student_maxarg > 0
+            positives_student_preds_num = positives_student_preds.float().sum(-1, keepdim=True)
+            positives_s_tp = cls_preds_student_ret > 0
+            positives_s_tp_num = positives_s_tp.float().sum(-1, keepdim=True)
+            cls_preds_student_recall = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean() 
+            cls_preds_student_precision = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(positives_student_preds_num, min=1.0)).mean()
+            # -------------------------------------------------------------
+            tb_dict_soft['mimic/cls_preds_student_precision'] = cls_preds_student_precision.item()
+            tb_dict_soft['mimic/cls_preds_student_recall'] = cls_preds_student_recall.item()
 
-        positives_student_preds = cls_preds_student_maxarg > 0
-        positives_student_preds_num = positives_student_preds.float().sum(-1, keepdim=True)
-        positives_s_tp = cls_preds_student_ret > 0
-        positives_s_tp_num = positives_s_tp.float().sum(-1, keepdim=True)
-        cls_preds_student_recall = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean() 
-        cls_preds_student_precision = (torch.clamp(positives_s_tp_num, min=1.0) / torch.clamp(positives_student_preds_num, min=1.0)).mean()
-        # -------------------------------------------------------------
-        tb_dict_soft = {
-            'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
-            'mimic/cls_preds_student_precision': cls_preds_student_precision.item(),
-            'mimic/cls_preds_student_recall': cls_preds_student_recall.item(),
-        }
         self.soft_loss_weights['weights_gt'] = reg_weights
+        # print("focal_weights:",focal_weights.shape, "reg_weights:", reg_weights.shape)
+        focal_weights = focal_weights.sum(dim=2)
+        self.soft_loss_weights['weights_focal'] = focal_weights
         if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
             
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
 
-            # without background class
-            cls_preds_teacher_activated = torch.sigmoid(cls_preds_teacher)
-            cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_activated>self.cls_score_thred,\
-                                torch.full_like(cls_preds_teacher_activated,1), torch.full_like(cls_preds_teacher_activated,0))
-            cls_preds_teacher_max = cls_preds_teacher_activated.max(dim=-1)
-            cls_preds_teacher_max = cls_preds_teacher_max.values
-            cls_preds_teacher_maxarg = cls_preds_teacher_one_hot_wo_bg.argmax(dim=-1) + 1
-            cls_preds_teacher_one_hot_wo_bg_sum = cls_preds_teacher_one_hot_wo_bg.sum(dim=-1)
-            cls_preds_teacher_maxarg = torch.where(cls_preds_teacher_one_hot_wo_bg_sum>0, cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
+            # Calculation Student TTP/F
+            if calculate_student_res:
+                # without background class
+                cls_preds_teacher_activated = torch.sigmoid(cls_preds_teacher)
+                cls_preds_teacher_one_hot_wo_bg =  torch.where(cls_preds_teacher_activated>self.cls_score_thred,\
+                                    torch.full_like(cls_preds_teacher_activated,1), torch.full_like(cls_preds_teacher_activated,0))
+                cls_preds_teacher_max = cls_preds_teacher_activated.max(dim=-1)
+                cls_preds_teacher_max = cls_preds_teacher_max.values
+                cls_preds_teacher_maxarg = cls_preds_teacher_one_hot_wo_bg.argmax(dim=-1) + 1
+                cls_preds_teacher_one_hot_wo_bg_sum = cls_preds_teacher_one_hot_wo_bg.sum(dim=-1)
+                cls_preds_teacher_maxarg = torch.where(cls_preds_teacher_one_hot_wo_bg_sum>0, cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
 
-            positives_teacher_preds = cls_preds_teacher_maxarg > 0 # Teacher Positive
-            negatives_teacher_preds = cls_preds_teacher_maxarg == 0
-            positives_teacher_preds_num = positives_teacher_preds.sum(1, keepdim=True).float()
+                positives_teacher_preds = cls_preds_teacher_maxarg > 0 # Teacher Positive
+                negatives_teacher_preds = cls_preds_teacher_maxarg == 0
+                positives_teacher_preds_num = positives_teacher_preds.sum(1, keepdim=True).float()
 
-            # Teacher Preds Result: True Positive >0, True Negtive=0, False Positive <0
-            cls_preds_teacher_ret = torch.where(cls_preds_teacher_maxarg==cls_targets.long(), \
-                    cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg, -1, dtype=cls_preds_teacher_maxarg.dtype))
-            # Teacher Preds False Positive with high confidence >0.8 including true positive > thred
-            cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_max>0.8,\
-                             cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
-            cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_whc_ret>0, cls_preds_teacher_whc_ret, cls_preds_teacher_ret)
-            positives_t_whc = cls_preds_teacher_whc_ret > 0
-            weights_twhc = positives_t_whc.float() / torch.clamp(positives_t_whc.float().sum(-1, keepdim=True), min=1.0)
-            self.soft_loss_weights['weights_twhc'] = weights_twhc
+                # Teacher Preds Result: True Positive >0, True Negtive=0, False Positive <0
+                cls_preds_teacher_ret = torch.where(cls_preds_teacher_maxarg==cls_targets.long(), \
+                        cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg, -1, dtype=cls_preds_teacher_maxarg.dtype))
+                # Teacher Preds False Positive with high confidence >0.8 including true positive > thred
+                cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_max>0.8,\
+                                cls_preds_teacher_maxarg, torch.full_like(cls_preds_teacher_maxarg,0))
+                cls_preds_teacher_whc_ret = torch.where(cls_preds_teacher_whc_ret>0, cls_preds_teacher_whc_ret, cls_preds_teacher_ret)
+                positives_t_whc = cls_preds_teacher_whc_ret > 0
+                weights_twhc = positives_t_whc.float() / torch.clamp(positives_t_whc.float().sum(-1, keepdim=True), min=1.0)
+                self.soft_loss_weights['weights_twhc'] = weights_twhc
 
-            # teacher preds true positive num
-            positives_t_tp = cls_preds_teacher_ret > 0 # Teacher Preds TP
-            positives_t_tp_num = positives_t_tp.float().sum(-1, keepdim=True)
-            positives_t_tp_tn = cls_preds_teacher_ret >= 0 # Teacher Preds TP&TN
-            positives_t_tp_tn = positives_t_tp_tn.float()
+                # teacher preds true positive num
+                positives_t_tp = cls_preds_teacher_ret > 0 # Teacher Preds TP
+                positives_t_tp_num = positives_t_tp.float().sum(-1, keepdim=True)
+                positives_t_tp_tn = cls_preds_teacher_ret >= 0 # Teacher Preds TP&TN
+                positives_t_tp_tn = positives_t_tp_tn.float()
 
-            weights_ttp = positives_t_tp.float() / torch.clamp(positives_t_tp.float().sum(-1, keepdim=True), min=1.0)
-            self.soft_loss_weights['weights_ttp'] = weights_ttp
+                weights_ttp = positives_t_tp.float() / torch.clamp(positives_t_tp.float().sum(-1, keepdim=True), min=1.0)
+                self.soft_loss_weights['weights_ttp'] = weights_ttp
 
-            # Teacher cls accuracy
-            positives_t_tp_tn_num = positives_t_tp_tn.sum(-1, keepdim=True)
-            # cls_preds_teacher_acc = (torch.clamp(positives_t_tp_tn_num, min=1.0) / cls_preds_teacher_ret.shape[1]).mean()
-            cls_preds_teacher_recall = (torch.clamp(positives_t_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean()
-            cls_preds_teacher_precision = (torch.clamp(positives_t_tp_num, min=1.0) / torch.clamp(positives_teacher_preds_num, min=1.0)).mean()
-            # print("cls_preds_teacher_acc: %.4f"%cls_preds_teacher_acc)
-            # print("cls_preds_teacher_precision: %.4f"%cls_preds_teacher_precision)
-            # print("cls_preds_teacher_recall: %.4f"%cls_preds_teacher_recall)
-            # Student False Poitive
-            positives_s_f = (cls_preds_student_ret < 0).float()
-            positives_s_fn = torch.where(cls_targets>0, positives_s_f, torch.full_like(positives_s_f,0)) # including classify error and false negtive
-            positives_s_fp = torch.where(cls_targets==0, positives_s_f, torch.full_like(positives_s_f,0))
+                # Teacher cls accuracy
+                positives_t_tp_tn_num = positives_t_tp_tn.sum(-1, keepdim=True)
+                # cls_preds_teacher_acc = (torch.clamp(positives_t_tp_tn_num, min=1.0) / cls_preds_teacher_ret.shape[1]).mean()
+                cls_preds_teacher_recall = (torch.clamp(positives_t_tp_num, min=1.0) / torch.clamp(pos_normalizer, min=1.0)).mean()
+                cls_preds_teacher_precision = (torch.clamp(positives_t_tp_num, min=1.0) / torch.clamp(positives_teacher_preds_num, min=1.0)).mean()
+                # print("cls_preds_teacher_acc: %.4f"%cls_preds_teacher_acc)
+                # print("cls_preds_teacher_precision: %.4f"%cls_preds_teacher_precision)
+                # print("cls_preds_teacher_recall: %.4f"%cls_preds_teacher_recall)
+                # Student False Poitive
+                positives_s_f = (cls_preds_student_ret < 0).float()
+                positives_s_fn = torch.where(cls_targets>0, positives_s_f, torch.full_like(positives_s_f,0)) # including classify error and false negtive
+                positives_s_fp = torch.where(cls_targets==0, positives_s_f, torch.full_like(positives_s_f,0))
 
-            weights_sf = positives_s_f.float() / torch.clamp(positives_s_f.float().sum(-1, keepdim=True), min=1.0)
+                weights_sf = positives_s_f.float() / torch.clamp(positives_s_f.float().sum(-1, keepdim=True), min=1.0)
 
-            weights_sfp = positives_s_fp.float() / torch.clamp(positives_s_fp.float().sum(-1, keepdim=True), min=1.0)
-            weights_sfn = positives_s_fn.float() / torch.clamp(positives_s_fn.float().sum(-1, keepdim=True), min=1.0)
-            if self.cls_use_teacher_t_only:
-                weights_sfp = weights_sfp * positives_t_tp_tn
-                weights_sfn = weights_sfn * positives_t_tp_tn
-                weights_sf = weights_sf * positives_t_tp_tn
-            self.soft_loss_weights['weights_sfp'] = weights_sfp
-            self.soft_loss_weights['weights_sfn'] = weights_sfn
-            self.soft_loss_weights['weights_sf'] = weights_sf
+                weights_sfp = positives_s_fp.float() / torch.clamp(positives_s_fp.float().sum(-1, keepdim=True), min=1.0)
+                weights_sfn = positives_s_fn.float() / torch.clamp(positives_s_fn.float().sum(-1, keepdim=True), min=1.0)
+                if self.cls_use_teacher_t_only:
+                    weights_sfp = weights_sfp * positives_t_tp_tn
+                    weights_sfn = weights_sfn * positives_t_tp_tn
+                    weights_sf = weights_sf * positives_t_tp_tn
+                self.soft_loss_weights['weights_sfp'] = weights_sfp
+                self.soft_loss_weights['weights_sfn'] = weights_sfn
+                self.soft_loss_weights['weights_sf'] = weights_sf
 
             ## Student cls accuracy
             # positives_s_tp_tn = cls_preds_student_ret >= 0
@@ -431,24 +389,27 @@ class AnchorHeadTemplate(nn.Module):
                 if self.cls_soft_loss_source is None:
                     weights = reg_weights
                 else:
-                    weights = torch.full_like(positives_teacher_preds, 0, dtype=cls_weights.dtype)
+                    weights = torch.full_like(reg_weights, 0, dtype=cls_weights.dtype)
                     for src, src_weights in zip(self.cls_soft_loss_source, self.cls_soft_loss_source_weights):
-                        if src == "Teacher_TP":
-                            weights += src_weights*weights_ttp
-                        if src == "Teacher_HC":
-                            weights += src_weights*weights_twhc
-                        if src == "Student_FP":
-                            weights += src_weights*weights_sfp
-                        if src == "Student_FN":
-                            weights += src_weights*weights_sfn
-                        if src == "Student_F":
-                            weights += src_weights*weights_sf
+                        # if src == "Teacher_TP":
+                        #     weights += src_weights*weights_ttp
+                        # if src == "Teacher_HC":
+                        #     weights += src_weights*weights_twhc
+                        # if src == "Student_FP":
+                        #     weights += src_weights*weights_sfp
+                        # if src == "Student_FN":
+                        #     weights += src_weights*weights_sfn
+                        # if src == "Student_F":
+                        #     weights += src_weights*weights_sf
                         if src == "GroundTruth":
                             weights += src_weights*reg_weights
+                        if src == "FocalWeight":
+                            weights += src_weights*focal_weights
                 if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'WeightedKLDivergenceLoss_v3',  'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                     if self.mimic_cls_classes_use_only: # elodie
+                        print("BUG - mimic_cls_classes_use_only")
                         weights = weights.view(batch_size, -1, self.class_index.shape[0])
-                        cls_soft_loss = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights)
+                        # cls_soft_loss = self.soft_cls_loss_func(cls_preds_per_location, cls_preds_teacher_per_location, weights=weights)
 
                         # ----------------For Test Print
                         # weights2 = weights.view(batch_size, -1, self.class_index.shape[0])
@@ -543,8 +504,9 @@ class AnchorHeadTemplate(nn.Module):
             cls_soft_loss = self.cls_soft_loss_beta * cls_soft_loss.sum() / batch_size
             
             tb_dict_soft['rpn_soft_loss_cls'] = cls_soft_loss.item()
-            tb_dict_soft['mimic/cls_preds_teacher_precision'] = cls_preds_teacher_precision.item()
-            tb_dict_soft['mimic/cls_preds_teacher_recall'] = cls_preds_teacher_recall.item()
+            if calculate_student_res:
+                tb_dict_soft['mimic/cls_preds_teacher_precision'] = cls_preds_teacher_precision.item()
+                tb_dict_soft['mimic/cls_preds_teacher_recall'] = cls_preds_teacher_recall.item()
 
             # print("cls loss before:\n\tcls_loss before:",cls_loss,"\n\tcls_soft_losss:",cls_soft_loss)
             if self.cls_soft_loss_modify is not None:
@@ -623,19 +585,24 @@ class AnchorHeadTemplate(nn.Module):
             if self.reg_soft_loss_source is not None:
                 weights = torch.full_like(positives, 0, dtype=reg_weights.dtype)
                 for src, src_loss_weights in zip(self.reg_soft_loss_source, self.reg_soft_loss_source_weights):
-                    if src == "Teacher_TP":
-                        weights += src_loss_weights*self.soft_loss_weights['weights_ttp']
-                    if src == "Teacher_HC":
-                        weights += src_loss_weights*self.soft_loss_weights['weights_twhc']
-                    if src == "Student_FP":
-                        weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
-                    if src == "Student_FN":
-                        weights += src_loss_weights*self.soft_loss_weights['weights_sfn']
-                    if src == "Student_F":
-                        weights += src_loss_weights*self.soft_loss_weights['weights_sf']
+                    # if src == "Teacher_TP":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_ttp']
+                    # if src == "Teacher_HC":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_twhc']
+                    # if src == "Student_FP":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
+                    # if src == "Student_FN":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_sfn']
+                    # if src == "Student_F":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_sf']
                     if src == "GroundTruth":
                         weights += src_loss_weights*self.soft_loss_weights['weights_gt']
-            else:
+                    if src == "FocalWeight":
+                        weights += src_loss_weights*self.soft_loss_weights['weights_focal']
+                    if src == "FocalGTWeight":
+                        # weights += src_loss_weights*self.soft_loss_weights['weights_focal']*positives.float()
+                        weights += src_loss_weights*self.soft_loss_weights['weights_focal']*self.soft_loss_weights['weights_gt']
+            else:       
                 weights = None
 
             if self.reg_soft_loss_type in ['BoundedRegressionLoss', 'BoundedRegressionLoss_v2']:
@@ -721,11 +688,80 @@ class AnchorHeadTemplate(nn.Module):
             tb_dict.update(tb_dict_soft)
         return box_loss, tb_dict
 
+
+    def get_hint_loss(self, student_data_dict=None, teacher_data_dict=None):
+        hint_loss = 0.0
+        if self.hint_soft_loss_source is None:
+            weights = None
+        else:
+            weights = torch.full_like(self.soft_loss_weights['weights_gt'], 0, dtype=self.soft_loss_weights['weights_gt'].dtype)
+            for src, src_loss_weights in zip(self.hint_soft_loss_source, self.hint_soft_loss_source_weights):
+                # if src == "Teacher_TP":
+                #     weights += src_loss_weights*self.soft_loss_weights['weights_ttp']
+                # if src == "Teacher_HC":
+                #     weights += src_loss_weights*self.soft_loss_weights['weights_twhc']
+                # if src == "Student_FP":
+                #     weights += src_loss_weights*self.soft_loss_weights['weights_sfp']
+                # if src == "Student_FN":
+                #     weights += src_loss_weights*self.soft_loss_weights['weights_sfn']
+                # if src == "Student_F":
+                #     weights += src_loss_weights*self.soft_loss_weights['weights_sf']
+                if src == "GroundTruth":
+                    weights += src_loss_weights*self.soft_loss_weights['weights_gt']
+                if src == "FocalWeight":
+                    weights += src_loss_weights*self.soft_loss_weights['weights_focal']
+
+        batch_size = student_data_dict['batch_size']
+
+        assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
+        for i, feature_ in enumerate(self.hint_feature_list):
+                if feature_ == 'sub_spatial_features_2d':
+                    teacher_feature = teacher_data_dict['sub_branch']['spatial_features_2d']
+                    student_feature = student_data_dict['spatial_features_2d']
+                else:
+                    teacher_feature = teacher_data_dict[feature_]
+                    student_feature = student_data_dict[feature_]
+                student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
+
+                teacher_feature = teacher_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                teacher_feature = teacher_feature.view(teacher_feature.shape[0], -1, teacher_feature.shape[-1])
+
+                batch_size = int(student_feature.shape[0])
+                if weights is not None:
+                    weights = weights.view(batch_size, -1, self.num_anchors_per_location)
+                    weights = weights.sum(dim=-1)
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
+                    hint_loss_src = hint_loss_src.sum()/batch_size
+                    # print("hint_loss_src:",hint_loss_src)
+                else:
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
+                    hint_loss_src = hint_loss_src.mean()
+                
+                
+                # print("sub_spatial_features_2d:",hint_loss_src)
+                # frame_id =  student_data_dict['frame_id'][0]
+                # print("frame_id:",frame_id)
+                # self.draw_features(teacher_feature, student_feature, frame_id)
+
+                hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss_src * self.hint_feature_weights[i]
+
+        tb_dict = {
+            'hint_loss': hint_loss.item()
+        }
+        return hint_loss, tb_dict
+
     def get_loss(self, teacher_ret_dict=None, student_data_dict=None, teacher_data_dict=None):
         cls_loss, tb_dict = self.get_cls_layer_loss(teacher_result=teacher_ret_dict)
         box_loss, tb_dict_box = self.get_box_reg_layer_loss(teacher_result=teacher_ret_dict)
         tb_dict.update(tb_dict_box)
         rpn_loss = cls_loss + box_loss
+
+        if self.hint_soft_loss_type is not None:
+            hint_loss, tb_dict_hint = self.get_hint_loss(student_data_dict=student_data_dict, teacher_data_dict=teacher_data_dict)
+            # print("hint_loss:",hint_loss)
+            tb_dict.update(tb_dict_hint)
+            rpn_loss = rpn_loss + hint_loss
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict
