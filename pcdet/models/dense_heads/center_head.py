@@ -94,12 +94,12 @@ class CenterHead(nn.Module):
             )
         self.predict_boxes_when_training = predict_boxes_when_training
         self.forward_ret_dict = {}
-        self.build_losses()
-        self.build_soft_losses()
+        distill_switch = self.build_soft_losses()
+        self.build_losses(return_weights=distill_switch)
 
 
-    def build_losses(self):
-        self.add_module('hm_loss_func', loss_utils.FocalLossCenterNet())
+    def build_losses(self, return_weights=False):
+        self.add_module('hm_loss_func', loss_utils.FocalLossCenterNet(return_weights=return_weights))
         self.add_module('reg_loss_func', loss_utils.RegLossCenterNet())
 
     # for distillation
@@ -115,7 +115,7 @@ class CenterHead(nn.Module):
         self.mimic_cls_classes_use_only = False
 
         if soft_losses_cfg is None:
-            return 
+            return False
 
         if soft_losses_cfg.get('CLS_LOSS', None) is not None:
             self.cls_soft_loss_type = soft_losses_cfg.CLS_LOSS.TYPE
@@ -169,9 +169,28 @@ class CenterHead(nn.Module):
                 self.reg_soft_loss_source_weights = np.ones(len(self.reg_soft_loss_source))
             self.reg_soft_loss_use_sin = soft_losses_cfg.REG_LOSS.get('USE_SIN', False)
 
-        # self.hint_soft_loss_type = None if soft_losses_cfg.get('HINT_LOSS', None) is None \
-        #     else soft_losses_cfg.HINT_LOSS.TYPE
+        if soft_losses_cfg.get('HINT_LOSS', None) is not None:
+            self.hint_soft_loss_type = soft_losses_cfg.HINT_LOSS.TYPE
 
+            hint_soft_loss_temperature = soft_losses_cfg.HINT_LOSS.get('TEMPERATURE', 1)
+            hint_normalize = soft_losses_cfg.HINT_LOSS.get('NORMALIZE', True)
+
+            self.add_module(
+                'soft_hint_loss_func',
+                getattr(mimic_loss_utils, self.hint_soft_loss_type)(T=hint_soft_loss_temperature, normalize=hint_normalize)
+            )
+            self.hint_soft_loss_gamma = soft_losses_cfg.HINT_LOSS.get('GAMMA', 0.5)
+            self.hint_feature_list = soft_losses_cfg.HINT_LOSS.get('FEATURE_LIST', None)
+            self.hint_feature_weights = soft_losses_cfg.HINT_LOSS.get('FEATURE_WEIGHTS', None)
+            if self.hint_feature_weights is None:
+                self.hint_feature_weights = np.ones(len(self.hint_feature_list))
+            self.seg_batch = soft_losses_cfg.HINT_LOSS.get('SEG_BATCH', False)
+            self.hint_soft_loss_source = soft_losses_cfg.HINT_LOSS.get('SOURCE', None)
+            self.hint_soft_loss_source_weights = soft_losses_cfg.HINT_LOSS.get('SOURCE_WEIGHTS', None)
+            if self.hint_soft_loss_source_weights is None and self.hint_soft_loss_source is not None:
+                self.hint_soft_loss_source_weights = np.ones(len(self.hint_soft_loss_source))
+
+        return True
 
 
     def assign_target_of_single_head(
@@ -337,7 +356,7 @@ class CenterHead(nn.Module):
 
         for idx, pred_dict in enumerate(pred_dicts):
             pred_dict['hm'] = self.sigmoid(pred_dict['hm'])
-            hm_loss = self.hm_loss_func(pred_dict['hm'], target_dicts['heatmaps'][idx])
+            hm_loss, focal_weights = self.hm_loss_func(pred_dict['hm'], target_dicts['heatmaps'][idx])
 
             target_boxes = target_dicts['target_boxes'][idx]
             pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.HEAD_ORDER], dim=1)
@@ -354,33 +373,90 @@ class CenterHead(nn.Module):
                 teacher_preds['hm'] = self.sigmoid(teacher_preds['hm'])
                 batch_size = pred_dict['hm'].shape[0]
 
-                hm_soft_weights = self.get_soft_loss_weights(pred_dict['hm'].permute(0, 2, 3, 1), \
-                                                            teacher_preds['hm'].permute(0, 2, 3, 1), \
-                                                            target_dicts['heatmaps'][idx].permute(0, 2, 3, 1)
-                                                            )
+                self.soft_loss_weights['weights_focal'] = focal_weights.sum(dim=1)
+                # ========= hm soft loss ==========
+                # hm_soft_weights = self.get_soft_loss_weights(pred_dict['hm'].permute(0, 2, 3, 1), \
+                #                                             teacher_preds['hm'].permute(0, 2, 3, 1), \
+                #                                             target_dicts['heatmaps'][idx].permute(0, 2, 3, 1)
+                #                                             )
+                if self.cls_soft_loss_source is None:
+                    hm_soft_weights = self.soft_loss_weights['weights_focal']
+                else:
+                    hm_soft_weights = torch.full_like(self.soft_loss_weights['weights_focal'], 0, \
+                        dtype=self.soft_loss_weights['weights_focal'].dtype)
+                    for src, src_weights in zip(self.cls_soft_loss_source, self.cls_soft_loss_source_weights):
+                        if src == "FocalWeight":
+                            hm_soft_weights += src_weights*self.soft_loss_weights['weights_focal']
+                    
                 hm_soft_loss = self.soft_hm_loss_func(pred_dict['hm'].permute(0, 2, 3, 1), \
                                                             teacher_preds['hm'].permute(0, 2, 3, 1), \
                                                             hm_soft_weights
                                                             )
+                
+                # for debug print
+                # for i in range(188):
+                #     for j in range(188):
+                #         # if target_dicts['heatmaps'][idx][0,:, i, j].sum()==0 and (teacher_preds['hm'][0, :, i, j]<0.1).float().sum()>0:
+                #             # continue
+                #         print("-------", i, j, "-------")
+                #         print("\t", i, j, "- target_dicts['heatmaps'][idx]",target_dicts['heatmaps'][idx][0,:, i, j])
+                #         print("\t", i, j,  "- teacher_preds['hm']", teacher_preds['hm'][0, :, i, j])
+                #         print("\t", i, j, "- pred_dict['hm']", pred_dict['hm'][0,:, i, j])
+                #         print("\t", i, j, "- focal_weights", focal_weights[0,:, i, j])
+                #         print("\t", i, j, "- hm_soft_loss", hm_soft_loss[0, i, j])
+
+                # =================for debug print
+
                 cls_soft_loss = self.cls_soft_loss_beta * hm_soft_loss.sum() / batch_size
-                if self.cls_soft_loss_modify is not None:
-                    hm_loss = (1-self.cls_soft_loss_modify)*hm_loss + self.cls_soft_loss_modify * cls_soft_loss
+
+                
+                # if self.cls_soft_loss_modify is not None:
+                #     hm_loss = (1-self.cls_soft_loss_modify)*hm_loss + self.cls_soft_loss_modify * cls_soft_loss
+                # else:
+                #     hm_loss = hm_loss + cls_soft_loss
+
+                # ========== regression soft loss ==========
+                teacher_pred_boxes = torch.cat([teacher_preds[head_name] for head_name in self.separate_head_cfg.HEAD_ORDER], dim=1)
+
+                if self.reg_soft_loss_source is not None:
+                    reg_soft_weights = torch.full_like(self.soft_loss_weights['weights_focal'][:,None,...], 0, \
+                        dtype=self.soft_loss_weights['weights_focal'].dtype)
+                    for src, src_weights in zip(self.reg_soft_loss_source, self.reg_soft_loss_source_weights):
+                        if src == "FocalGTWeight":
+                            reg_soft_weights += src_weights * self.soft_loss_weights['weights_focal'][:,None,...]
                 else:
-                    hm_loss = hm_loss + cls_soft_loss
-
-                # regression soft loss
-                teacher_pred_boxes = torch.cat([teacher_preds[head_name] for head_name in ['center', 'center_z', 'dim', 'rot']], dim=1)
-
-                regr, teach_regr, gt_regr, weights = self.trans_reg_pred(pred_boxes, teacher_pred_boxes, \
+                    reg_soft_weights = self.soft_loss_weights['weights_focal'][:,None,...]
+                    
+                regr, teach_regr, gt_regr, reg_weights = self.trans_reg_pred(pred_boxes, teacher_pred_boxes, \
                                                 target_dicts['masks'][idx], \
                                                 target_dicts['inds'][idx], \
-                                                target_boxes
+                                                target_boxes, \
+                                                weights_soft = reg_soft_weights,
                                                 )
-                loc_soft_loss_src = self.soft_reg_loss_func(regr, teach_regr, gt_regr, \
-                                                            weights=weights)
-                loc_soft_loss = self.reg_soft_loss_alpha *loc_soft_loss_src.sum() / batch_size
 
-                loss += cls_soft_loss + loc_soft_loss
+                loc_soft_loss_src = self.soft_reg_loss_func(regr, teach_regr, gt_regr, \
+                                                            weights=reg_weights)
+
+                # for debug print
+                # for i in range(gt_regr.shape[1]):
+                #         # if target_dicts['heatmaps'][idx][0,:, i, j].sum()==0 and (teacher_preds['hm'][0, :, i, j]<0.1).float().sum()>0:
+                #             # continue
+                #         print("-------", i,  "-------")
+                #         print("\t", i,  "- gt_regr",gt_regr[0,i])
+                #         print("\t", i,  "- teach_regr",teach_regr[0,i])
+                #         print("\t", i,  "- regr",regr[0,i])
+                #         print("\t", i,  "- reg_weights",reg_weights[0,i])
+                #         print("\t", i,  "- loc_soft_loss_src",loc_soft_loss_src[0,i])
+
+                # =================for debug print
+                loc_soft_loss = self.reg_soft_loss_alpha *loc_soft_loss_src.sum() / batch_size
+                
+                # ========== hint soft loss  ==========
+                if self.hint_soft_loss_type is not None:
+                    hint_loss, tb_dict_hint = self.get_hint_loss(student_data_dict=student_data_dict, teacher_data_dict=teacher_data_dict)
+                    loss += hint_loss
+                    tb_dict.update(tb_dict_hint)
+                
                 tb_dict_soft = {
                     'hm_hard_loss_head_%d' % idx: copy.deepcopy(hm_loss.item()),
                     'hm_soft_loss_%d' % idx: cls_soft_loss.item(),
@@ -388,15 +464,55 @@ class CenterHead(nn.Module):
                     'loc_soft_loss%d' % idx: loc_soft_loss.item(),
                 }
                 tb_dict.update(tb_dict_soft)
-            
+                loc_soft_loss = loc_soft_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
+                loss += cls_soft_loss + loc_soft_loss  
+
             loss += hm_loss + loc_loss
             tb_dict['hm_loss_head_%d' % idx] = hm_loss.item()
             tb_dict['loc_loss_head_%d' % idx] = loc_loss.item()
 
         tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
+    
+    def get_hint_loss(self, student_data_dict=None, teacher_data_dict=None):
+        hint_loss = 0.0
+        if self.hint_soft_loss_source is None:
+            weights = None
+        else:
+            # weights = torch.full_like(self.soft_loss_weights['weights_gt'], 0, dtype=self.soft_loss_weights['weights_gt'].dtype)
+            for src, src_loss_weights in zip(self.hint_soft_loss_source, self.hint_soft_loss_source_weights):
+                if src == "FocalWeight":
+                    B = self.soft_loss_weights['weights_focal'].size(0)
+                    weights = self.soft_loss_weights['weights_focal'].view(B, -1)
+                    weights = src_loss_weights * weights
 
-    def trans_reg_pred(self, output, teach_output, mask, ind=None, target=None):
+        assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
+        for i, feature_ in enumerate(self.hint_feature_list):
+                teacher_feature = teacher_data_dict[feature_]
+                student_feature = student_data_dict[feature_]
+                student_feature = student_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                student_feature = student_feature.view(student_feature.shape[0], -1, student_feature.shape[-1])
+
+                teacher_feature = teacher_feature.permute(0, 2, 3, 1) # [N,H,W,C]
+                teacher_feature = teacher_feature.view(teacher_feature.shape[0], -1, teacher_feature.shape[-1])
+
+                batch_size = int(student_feature.shape[0])
+                if weights is not None:
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature,weights=weights)
+                    hint_loss_src = hint_loss_src.sum()/batch_size
+                    # print("hint_loss_src:",hint_loss_src)
+                else:
+                    hint_loss_src = self.soft_hint_loss_func(student_feature,teacher_feature)
+                    hint_loss_src = hint_loss_src.mean()
+                
+                hint_loss = hint_loss + self.hint_soft_loss_gamma * hint_loss_src * self.hint_feature_weights[i]
+
+        tb_dict = {
+            'hint_loss': hint_loss.item()
+        }
+        return hint_loss, tb_dict
+
+    def trans_reg_pred(self, output, teach_output, mask, ind=None, target=None, weights_soft=None):
         """
         from loss_utils
         Args:
@@ -409,12 +525,15 @@ class CenterHead(nn.Module):
         if ind is None:
             pred = output
             teach_pred = teach_output
+            weights_soft_ind = weights_soft
         else:
             pred = loss_utils._transpose_and_gather_feat(output, ind)
             teach_pred = loss_utils._transpose_and_gather_feat(teach_output, ind)
-
+            weights_soft_ind = loss_utils._transpose_and_gather_feat(weights_soft, ind)
+        
         num = mask.float().sum()
         weights = mask.float() / mask.float().sum(dim=1)[...,None]
+
         mask = mask.unsqueeze(2).expand_as(target).float()
 
         isnotnan = (~ torch.isnan(target)).float()
@@ -422,8 +541,8 @@ class CenterHead(nn.Module):
         regr = pred * mask
         teach_regr = teach_pred * mask
         gt_regr = target * mask
-
-        return regr, teach_regr, gt_regr, weights
+        weights_regr = weights_soft_ind * mask[:,:,:1] * weights[...,None]
+        return regr, teach_regr, gt_regr, weights_regr.squeeze(2)
         
     def get_soft_loss_weights(self, stu_pred, teach_pred, target):
         stu_pred_out =  torch.where(stu_pred>self.cls_score_thred,\
@@ -454,16 +573,6 @@ class CenterHead(nn.Module):
         pos_normalizer = target_pos/torch.clamp(target_pos.sum((1,2), keepdim=True), min=1.0)
         self.soft_loss_weights['weights_gt'] = pos_normalizer
 
-        if self.cls_soft_loss_source is None:
-            weights = pos_normalizer
-        else:
-            weights = torch.full_like(pos_normalizer, 0, dtype=pos_normalizer.dtype)
-            for src, src_weights in zip(self.cls_soft_loss_source, self.cls_soft_loss_source_weights):
-                if src == "Student_F":
-                    weights += src_weights*weights_sf
-                if src == "GroundTruth":
-                    weights += src_weights*pos_normalizer
-        return weights
 
     # for distillation
     def generate_predicted_boxes(self, batch_size, pred_dicts):
