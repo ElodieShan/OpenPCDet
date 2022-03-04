@@ -11,7 +11,7 @@ class SigmoidFocalClassificationLoss(nn.Module):
     Sigmoid focal cross entropy loss.
     """
 
-    def __init__(self, gamma: float = 2.0, alpha: float = 0.25):
+    def __init__(self, gamma: float = 2.0, alpha: float = 0.25, return_weights=False):
         """
         Args:
             gamma: Weighting parameter to balance loss for hard and easy examples.
@@ -20,6 +20,7 @@ class SigmoidFocalClassificationLoss(nn.Module):
         super(SigmoidFocalClassificationLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
+        self.return_weights = return_weights
 
     @staticmethod
     def sigmoid_cross_entropy_with_logits(input: torch.Tensor, target: torch.Tensor):
@@ -68,10 +69,19 @@ class SigmoidFocalClassificationLoss(nn.Module):
             weights = weights.unsqueeze(-1)
 
         assert weights.shape.__len__() == loss.shape.__len__()
+        if self.return_weights:
+            return loss * weights, focal_weight
+        return loss * weights
 
-        return loss * weights, focal_weight
-
-
+def get_focal_weights(input: torch.Tensor, target: torch.Tensor, alpha=0.25, gamma=2.0, reverse=False):
+    pred_sigmoid = torch.sigmoid(input)
+    alpha_weight = target * alpha + (1 - target) * (1 - alpha)
+    if reverse:
+        pt = target * (pred_sigmoid) + (1.0 - target) * (1.0 - pred_sigmoid)
+    else:
+        pt = target * (1.0 - pred_sigmoid) + (1.0 - target) * pred_sigmoid
+    focal_weight = alpha_weight * torch.pow(pt, gamma)
+    return focal_weight
 class WeightedSmoothL1Loss(nn.Module):
     """
     Code-wise Weighted Smooth L1 Loss modified based on fvcore.nn.smooth_l1_loss
@@ -299,8 +309,7 @@ def neg_loss_cornernet(pred, gt, mask=None, return_weights=False):
     # print("pos_loss:", pos_loss, "neg_loss:", neg_loss, "loss:", loss)
     # for distillation
     if return_weights:
-        # focal_weights = torch.pow(1 - pred, 2) * pos_inds + torch.pow(pred, 2) * neg_weights * neg_inds
-        focal_weights = torch.pow(pred, 2) * neg_weights * neg_inds
+        focal_weights = torch.pow(1 - pred, 2) * pos_inds + torch.pow(pred, 2) * neg_weights * neg_inds
 
         if mask is not None:
             focal_weights = focal_weights * mask

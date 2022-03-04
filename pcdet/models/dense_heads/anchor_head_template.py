@@ -1,3 +1,4 @@
+from unittest import TextTestRunner
 import numpy as np
 import torch
 import torch.nn as nn
@@ -32,23 +33,26 @@ class AnchorHeadTemplate(nn.Module):
         self.target_assigner = self.get_target_assigner(anchor_target_cfg)
 
         self.forward_ret_dict = {}
-        self.build_losses(self.model_cfg.LOSS_CONFIG)
 
         self.model_cfg.SOFT_LOSS_CONFIG = self.model_cfg.get('SOFT_LOSS_CONFIG', None) # elodie soft loss
         self.cls_score_thred = self.model_cfg.LOSS_CONFIG.get('CLS_SCORE_THRED', cls_score_thred)
         
         self.soft_loss_weights = {}
+        self.distill_switch = False
         if self.model_cfg.SOFT_LOSS_CONFIG is not None:
             self.build_soft_losses(self.model_cfg.SOFT_LOSS_CONFIG)
             self.mimic_cls_classes_use_only = False
             self.voxel_size = voxel_size
             self.point_cloud_range = point_cloud_range
+            self.distill_switch = True
         else:
             self.cls_soft_loss_type = None
             self.reg_soft_loss_type = None
             self.dir_soft_loss_type = None
             self.hint_soft_loss_type = None
             self.mimic_cls_classes_use_only = False
+        
+        self.build_losses(self.model_cfg.LOSS_CONFIG, self.distill_switch)
             
         
         self.pr_dict={
@@ -93,10 +97,10 @@ class AnchorHeadTemplate(nn.Module):
             raise NotImplementedError
         return target_assigner
 
-    def build_losses(self, losses_cfg):
+    def build_losses(self, losses_cfg, return_weights=False):
         self.add_module(
             'cls_loss_func',
-            loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
+            loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0, return_weights=return_weights)
         )
         reg_loss_name = 'WeightedSmoothL1Loss' if losses_cfg.get('REG_LOSS_TYPE', None) is None \
             else losses_cfg.REG_LOSS_TYPE
@@ -262,7 +266,11 @@ class AnchorHeadTemplate(nn.Module):
         one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
         cls_preds = cls_preds.view(batch_size, -1, self.num_class)
         one_hot_targets = one_hot_targets[..., 1:]
-        cls_loss_src, focal_weights = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
+        if self.distill_switch:
+            cls_loss_src, focal_weights = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
+        else:
+            cls_loss_src = self.cls_loss_func(cls_preds, one_hot_targets, weights=cls_weights)  # [N, M]
+
         cls_loss = cls_loss_src.sum() / batch_size
         tb_dict_soft = {
                 'rpn_hard_loss_cls': copy.deepcopy(cls_loss.item()),
@@ -291,11 +299,13 @@ class AnchorHeadTemplate(nn.Module):
             tb_dict_soft['mimic/cls_preds_student_recall'] = cls_preds_student_recall.item()
 
         self.soft_loss_weights['weights_gt'] = reg_weights
+        # print("self.soft_loss_weights['weights_gt']:", self.soft_loss_weights['weights_gt'])
         # print("focal_weights:",focal_weights.shape, "reg_weights:", reg_weights.shape)
-        focal_weights = focal_weights.sum(dim=2)
-        self.soft_loss_weights['weights_focal'] = focal_weights
+
         if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
-            
+            focal_weights = focal_weights.sum(dim=2)
+            self.soft_loss_weights['weights_focal'] = focal_weights  
+            self.soft_loss_weights['positives'] = positives.float()          
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
 
@@ -386,6 +396,8 @@ class AnchorHeadTemplate(nn.Module):
                     cls_soft_loss = self.soft_cls_loss_func(cls_preds, cls_preds_teacher_activated, weights=cls_weights_t)  # [N, M]
 
             else:
+                # weights teach
+                self.soft_loss_weights['weights_teach'] = mimic_loss_utils.teach_weights(cls_preds, cls_preds_teacher)
                 if self.cls_soft_loss_source is None:
                     weights = reg_weights
                 else:
@@ -405,6 +417,24 @@ class AnchorHeadTemplate(nn.Module):
                             weights += src_weights*reg_weights
                         if src == "FocalWeight":
                             weights += src_weights*focal_weights
+                        if src == "FocalTeachWeightReverse1":
+                            focal_teach_weights = loss_utils.get_focal_weights(cls_preds_teacher, one_hot_targets, 0.75, 1.0, True).sum(dim=2)
+                            weights += src_weights*focal_teach_weights*focal_weights
+                            # for i in range(cls_preds.shape[1]):
+                            #     if one_hot_targets[0,i].sum()==0 and (torch.sigmoid(cls_preds[0,i])>0.1).float().sum()==0:
+                            #         continue
+                            #     print("------i:", i) 
+                            #     print("one_hot_targets:", one_hot_targets[0,i])          
+                            #     print("cls_preds_teacher:",  torch.sigmoid(cls_preds_teacher[0,i]))          
+                            #     print("cls_preds:", torch.sigmoid(cls_preds[0,i]))          
+                            #     print("focal_teach_weights:", focal_teach_weights[0,i])          
+                            #     print("focal_weights:", focal_weights[0,i])          
+                            #     print("weights:", weights[0,i])     
+                        if src == "FocalTeachWeight":
+                            focal_teach_weights = loss_utils.get_focal_weights(cls_preds_teacher, one_hot_targets, 0.5, 1.0, False)
+                            weights += src_weights*focal_teach_weights.sum(dim=2)
+     
+
                 if self.cls_soft_loss_type in ['WeightedKLDivergenceLoss', 'WeightedKLDivergenceLoss_v2', 'WeightedKLDivergenceLoss_v3',  'SigmoidKLDivergenceLoss','SoftmaxKLDivergenceLoss']:
                     if self.mimic_cls_classes_use_only: # elodie
                         print("BUG - mimic_cls_classes_use_only")
@@ -602,6 +632,11 @@ class AnchorHeadTemplate(nn.Module):
                     if src == "FocalGTWeight":
                         # weights += src_loss_weights*self.soft_loss_weights['weights_focal']*positives.float()
                         weights += src_loss_weights*self.soft_loss_weights['weights_focal']*self.soft_loss_weights['weights_gt']
+                    # if src == "FocalTeachWeight":
+                    #     weights += src_loss_weights*self.soft_loss_weights['weights_teach']
+                    # if src == "FocalTeachWeightReverse":
+                    #     weights += src_loss_weights*(1-self.soft_loss_weights['weights_teach'])*self.soft_loss_weights['weights_gt']
+                    #     print("weights:",weights)
             else:       
                 weights = None
 
