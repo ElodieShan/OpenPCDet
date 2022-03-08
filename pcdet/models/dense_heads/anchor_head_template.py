@@ -301,11 +301,13 @@ class AnchorHeadTemplate(nn.Module):
         self.soft_loss_weights['weights_gt'] = reg_weights
         # print("self.soft_loss_weights['weights_gt']:", self.soft_loss_weights['weights_gt'])
         # print("focal_weights:",focal_weights.shape, "reg_weights:", reg_weights.shape)
-
-        if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
+        if teacher_result is not None:
             focal_weights = focal_weights.sum(dim=2)
-            self.soft_loss_weights['weights_focal'] = focal_weights  
-            self.soft_loss_weights['positives'] = positives.float()          
+            self.soft_loss_weights['weights_focal'] = focal_weights
+            self.soft_loss_weights['weights_focal_gamma4'] = loss_utils.get_focal_weights(cls_preds, one_hot_targets, 0.25, 4.0, False).sum(dim=2)
+
+            # self.soft_loss_weights['positives'] = positives.float()  
+        if teacher_result is not None and self.cls_soft_loss_type is not None: # elodie teacher
             cls_preds_teacher = teacher_result['cls_preds']
             cls_preds_teacher = cls_preds_teacher.view(batch_size, -1, self.num_class)
 
@@ -745,7 +747,8 @@ class AnchorHeadTemplate(nn.Module):
                     weights += src_loss_weights*self.soft_loss_weights['weights_gt']
                 if src == "FocalWeight":
                     weights += src_loss_weights*self.soft_loss_weights['weights_focal']
-
+                if src == "FocalGamma4":
+                    weights += src_loss_weights*self.soft_loss_weights['weights_focal_gamma4']
         batch_size = student_data_dict['batch_size']
 
         assert len(self.hint_feature_list) == len(self.hint_feature_weights), 'self.hint_feature_list length != self.hint_feature_weights length'
