@@ -6,7 +6,7 @@ from skimage import io
 
 from . import kitti_utils
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
-from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti
+from ...utils import box_utils, calibration_kitti, common_utils, object3d_kitti, pointcloud_sample_utils
 from ..dataset import DatasetTemplate
 
 
@@ -351,6 +351,52 @@ class KittiDataset(DatasetTemplate):
 
         return annos
 
+
+    def get_eval_gt_annos(self):
+        eval_gt_annos = []
+        for idx in range(len(self.kitti_infos)):
+            info = copy.deepcopy(self.kitti_infos[idx])
+
+            sample_idx = info['point_cloud']['lidar_idx']
+            calib = self.get_calib(sample_idx)
+            get_item_list = self.dataset_cfg.get('GET_ITEM_LIST', ['points'])
+
+            print("idx", idx)
+            if 'annos' in info:
+                annos = copy.deepcopy(info['annos'])
+                annos = common_utils.drop_info_with_name(annos, name='DontCare')
+                loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+                gt_names = annos['name']
+                gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+                gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+
+            num_features = info['point_cloud']['num_features'] if 'num_features' in info['point_cloud'] else 4
+            points = self.get_lidar(sample_idx, num_features=num_features)
+            ring = points[:,4]
+            # for sample_type in ['Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64']:
+            points_16lines, _ = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, ring, verticle_switch=True, return_extra_points=False)
+
+            num_objects = gt_boxes_lidar.shape[0]
+            num_gt = len(gt_names)
+            if num_objects !=num_gt:
+                print("num_objects !=num_gt")
+            corners_lidar = box_utils.boxes_to_corners_3d(gt_boxes_lidar)
+            num_points_in_gt = -np.ones(num_gt, dtype=np.int32)
+
+            for k in range(num_objects):
+                flag = box_utils.in_hull(points_16lines[:, 0:3], corners_lidar[k])
+                num_points_in_gt[k] = flag.sum()
+
+            anno_16line = {}
+            keep_indices = [i for i, x in enumerate(num_points_in_gt) if x > 0]
+            # print(keep_indices)
+            for key in annos.keys():
+                anno_16line[key] = annos[key][keep_indices]
+            eval_gt_annos.append(anno_16line)
+
+        return eval_gt_annos
+
+
     def evaluation(self, det_annos, class_names, **kwargs):
         if 'annos' not in self.kitti_infos[0].keys():
             return None, {}
@@ -359,6 +405,8 @@ class KittiDataset(DatasetTemplate):
 
         eval_det_annos = copy.deepcopy(det_annos)
         eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        # eval_gt_annos = self.get_eval_gt_annos()
+
         # ==== for debug elodie.shan ==== 
         # num = 2
         # eval_det_annos = eval_det_annos[:num]
@@ -376,7 +424,8 @@ class KittiDataset(DatasetTemplate):
                     det_anno_name.append(name)
                 det_anno['name'] = np.array(det_anno_name) 
 
-        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True, PR_detail_dict={})
+        # ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, compute_cls_ap=True, PR_detail_dict={})
+        ap_result_str, ap_dict = kitti_eval.get_official_eval_result(eval_gt_annos, eval_det_annos, class_names, PR_detail_dict={})
 
 
         return ap_result_str, ap_dict
