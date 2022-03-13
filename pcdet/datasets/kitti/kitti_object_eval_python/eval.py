@@ -496,6 +496,7 @@ def eval_class(gt_annos,
             (gt_datas_list, dt_datas_list, ignored_gts, ignored_dets,
              dontcares, total_dc_num, total_num_valid_gt) = rets
             for k, min_overlap in enumerate(min_overlaps[:, metric, m]):
+                total_gt_num_all = 0
                 thresholdss = []
                 for i in range(len(gt_annos)):
                     rets = compute_statistics_jit(
@@ -698,6 +699,7 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, PR_detail_dict
     overlap_0_5 = np.array([[0.7, 0.5, 0.5, 0.7,
                              0.5, 0.5], [0.5, 0.25, 0.25, 0.5, 0.25, 0.5],
                             [0.5, 0.25, 0.25, 0.5, 0.25, 0.5]])
+    compute_cls_ap = False
     if compute_cls_ap:
         overlap_0_0 = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
                                 [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
