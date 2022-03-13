@@ -157,7 +157,10 @@ class DataBaseSampler(object):
         gt_boxes_mask = data_dict['gt_boxes_mask']
         gt_boxes = data_dict['gt_boxes'][gt_boxes_mask]
         gt_names = data_dict['gt_names'][gt_boxes_mask]
-        gt_obj_ids = data_dict['gt_obj_ids'][gt_boxes_mask]
+        if 'gt_obj_ids' in data_dict:
+            gt_obj_ids = data_dict['gt_obj_ids'][gt_boxes_mask]
+        else:
+            gt_obj_ids = None
         num_points_in_gt = data_dict['num_points_in_gt'][gt_boxes_mask]
 
         points = data_dict['points']
@@ -194,8 +197,8 @@ class DataBaseSampler(object):
 
         obj_points = np.concatenate(obj_points_list, axis=0)
         sampled_gt_names = np.array([x['name'] for x in total_valid_sampled_dict])
-
-        sampled_gt_obj_ids = np.array([x['obj_id'] for x in total_valid_sampled_dict]) #elodie 0703
+        if gt_obj_ids is not None:
+            sampled_gt_obj_ids = np.array([x['obj_id'] for x in total_valid_sampled_dict]) #elodie 0703
         sampled_num_points_in_gt = np.array([x['num_points_in_gt'] for x in total_valid_sampled_dict]) #elodie 0703
 
         large_sampled_gt_boxes = box_utils.enlarge_box3d(
@@ -205,13 +208,14 @@ class DataBaseSampler(object):
         points = np.concatenate([obj_points, points], axis=0)
         gt_names = np.concatenate([gt_names, sampled_gt_names], axis=0)
         gt_boxes = np.concatenate([gt_boxes, sampled_gt_boxes], axis=0)
-        gt_obj_ids = np.concatenate([gt_obj_ids, sampled_gt_obj_ids], axis=0) #elodie 0703
         num_points_in_gt = np.concatenate([num_points_in_gt, sampled_num_points_in_gt], axis=0) #elodie 0703
 
         data_dict['gt_boxes'] = gt_boxes
         data_dict['gt_names'] = gt_names
-        data_dict['gt_obj_ids'] = gt_obj_ids #elodie 0703
         data_dict['num_points_in_gt'] = num_points_in_gt #elodie 0703
+        if gt_obj_ids is not None:
+            gt_obj_ids = np.concatenate([gt_obj_ids, sampled_gt_obj_ids], axis=0) #elodie 0703
+            data_dict['gt_obj_ids'] = gt_obj_ids #elodie 0703
 
         data_dict['points'] = points
         return data_dict
