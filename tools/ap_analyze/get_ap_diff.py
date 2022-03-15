@@ -18,7 +18,7 @@ def get_3d_bev(f):
 
     return f, threed, bev
 
-with open("./result.txt") as f:
+with open("./ap_analyze/result.txt") as f:
     for line in f:
         if line.find(Car_)!=-1:
             f, threed, bev = get_3d_bev(f)
