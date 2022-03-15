@@ -135,6 +135,7 @@ if __name__ == '__main__':
         config_file = sys.argv[2]
         result_pkl_file = sys.argv[3]
         eval_type = sys.argv[4]
+        sample_type = sys.argv[5]
 
         log_dir = config_dir + "/result_eval"
         dataset, dataset_type, cfg, logger = load_dataset_from_openpcdet(config_file, train_mode=False, log_dir=log_dir)
@@ -144,12 +145,14 @@ if __name__ == '__main__':
         if eval_type == "evaluation":
             result_str, result_dict = dataset.evaluation(
                 det_annos, dataset.class_names,
-                eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC
+                eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
+                sample_type = sample_type
             )
 
             logger.info("config_file: %s"%config_file)
             logger.info("result_pkl_file: %s"%result_pkl_file)
             logger.info("eval_type: %s"%eval_type)
+            logger.info("sample_type: %s"%sample_type)
 
             cls_precision_ = {
                 'car': [],

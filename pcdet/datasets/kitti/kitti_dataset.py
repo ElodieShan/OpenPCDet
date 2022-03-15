@@ -353,6 +353,7 @@ class KittiDataset(DatasetTemplate):
 
 
     def get_eval_gt_annos(self, sample_type="TSPv3"):
+        print("******gt sample_type:", sample_type)
         eval_gt_annos = []
         for idx in range(len(self.kitti_infos)):
             info = copy.deepcopy(self.kitti_infos[idx])
