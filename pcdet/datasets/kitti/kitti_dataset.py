@@ -352,7 +352,7 @@ class KittiDataset(DatasetTemplate):
         return annos
 
 
-    def get_eval_gt_annos(self):
+    def get_eval_gt_annos(self, sample_type="TSPv3"):
         eval_gt_annos = []
         for idx in range(len(self.kitti_infos)):
             info = copy.deepcopy(self.kitti_infos[idx])
@@ -374,7 +374,10 @@ class KittiDataset(DatasetTemplate):
             points = self.get_lidar(sample_idx, num_features=num_features)
             ring = points[:,4]
             # for sample_type in ['Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64']:
-            points_16lines, _ = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, ring, verticle_switch=True, return_extra_points=False)
+            if sample_type=="TSPv3":
+                points_16lines, _ = pointcloud_sample_utils.downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=False, return_extra_points=False)
+            elif sample_type=="VLP":
+                points_16lines, _ = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, ring, verticle_switch=True, return_extra_points=False)
 
             num_objects = gt_boxes_lidar.shape[0]
             num_gt = len(gt_names)
@@ -397,15 +400,17 @@ class KittiDataset(DatasetTemplate):
         return eval_gt_annos
 
 
-    def evaluation(self, det_annos, class_names, **kwargs):
+    def evaluation(self, det_annos, class_names, sample_type=None, **kwargs):
         if 'annos' not in self.kitti_infos[0].keys():
             return None, {}
 
         from .kitti_object_eval_python import eval as kitti_eval
 
         eval_det_annos = copy.deepcopy(det_annos)
-        eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
-        # eval_gt_annos = self.get_eval_gt_annos()
+        if sample_type is None:
+            eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        else:
+            eval_gt_annos = self.get_eval_gt_annos(sample_type=sample_type) #TSPv3 VLP
 
         # ==== for debug elodie.shan ==== 
         # num = 2
