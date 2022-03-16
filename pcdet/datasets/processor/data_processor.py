@@ -312,9 +312,9 @@ class DataProcessor(object):
         verticle_switch = config.get('VERTICAL_SAMPLE', True)
         horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
 
+        data_type = data_dict["metadata"]["data_type"]
         if data_type == "kitti":
             points = data_dict['points']
-            data_type = data_dict["metadata"]["data_type"]
             if downsample_type == "TensorPro":
                 points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points_switch)
             elif downsample_type == "TensorPro_v2":
@@ -330,7 +330,7 @@ class DataProcessor(object):
             # ring_remained_indices = (data_dict['ring'][..., None] == ring_remained).any(-1).nonzero()
             # points_16lines = points[ring_remained_indices]
             mask = np.in1d(data_dict['ring'],ring_remained)
-            points_16lines = points[mask]
+            points_16lines = data_dict['points'][mask]
 
         if config.REPLACE_ORI_POINTS[self.mode]:
             data_dict['points'] = points_16lines
