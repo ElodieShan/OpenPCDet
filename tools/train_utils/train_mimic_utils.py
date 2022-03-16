@@ -55,7 +55,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                     batch['voxel_coords'] = batch['16lines']['voxel_coords']
                     batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
             else:
-                batch['points'] = batch['16lines']['points_16lines']
+                # batch['points'] = batch['16lines']['points_16lines']
                 batch['voxels'] = batch['16lines']['voxels']
                 batch['voxel_coords'] = batch['16lines']['voxel_coords']
                 batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
@@ -93,7 +93,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                     enable = np.random.choice([False, True], replace=False, p=[cross_sample_prob,1-cross_sample_prob])
                     # enable = cross_sample_array[cur_it]
                     if enable:
-                        batch['points'] = batch['16lines']['points_16lines']
+                        # batch['points'] = batch['16lines']['points_16lines']
                         batch['voxels'] = batch['16lines']['voxels']
                         batch['voxel_coords'] = batch['16lines']['voxel_coords']
                         batch['voxel_num_points'] = batch['16lines']['voxel_num_points']
