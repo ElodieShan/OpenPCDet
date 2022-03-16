@@ -150,12 +150,12 @@ class DataProcessor(object):
             data_dict[mimic_key]['voxel_coords'] = coordinates_mimic
             data_dict[mimic_key]['voxel_num_points'] = num_points_mimic
 
-            if 'points_16lines_inbox' in data_dict[mimic_key]:
-                voxel_output_mimic_inbox = self.voxel_generator.generate(data_dict[mimic_key]['points_16lines_inbox'])
-                if isinstance(voxel_output_mimic, dict):
-                    data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox['coordinates']
-                else:
-                    data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox[1]
+            # if 'points_16lines_inbox' in data_dict[mimic_key]:
+            #     voxel_output_mimic_inbox = self.voxel_generator.generate(data_dict[mimic_key]['points_16lines_inbox'])
+            #     if isinstance(voxel_output_mimic, dict):
+            #         data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox['coordinates']
+            #     else:
+            #         data_dict[mimic_key]['voxel_coords_inbox'] = voxel_output_mimic_inbox[1]
     
     def transform_points_to_voxels(self, data_dict=None, config=None):
         if data_dict is None:
@@ -188,6 +188,8 @@ class DataProcessor(object):
         
         if '16lines' in data_dict: #elodie
             self.transform_points_to_voxels_mimic(mimic_key='16lines', data_dict=data_dict)
+            data_dict['16lines'].pop('points_16lines')
+            data_dict.pop('points')
         if 'dense' in data_dict: #elodie
             self.transform_points_to_voxels_mimic(mimic_key='dense', data_dict=data_dict)
         return data_dict
@@ -224,7 +226,67 @@ class DataProcessor(object):
         data_dict['points'] = points[choice]
         return data_dict
 
+    def downsample_points_64lines(self, data_dict=None, config=None): 
+        if data_dict is None:
+            return partial(self.downsample_points_64lines, config=config)
+        assert "data_type" in data_dict["metadata"], '[Error Elodie] metadata not in data_dict!'
+        assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
+        if config.DOWNSAMPLE_POINTS[self.mode] is not True:
+            return data_dict
+
+        if config.REPLACE_ORI_POINTS[self.mode]:        
+            mask = data_dict['ring'] != 0
+            data_dict['points'] = data_dict['points'][mask]
+            data_dict['ring'] = data_dict['ring'][mask]
+        return data_dict
+
+
     # @brief: downsample pointcloud to 16 lines - elodie
+    # def downsample_points_16lines(self, data_dict=None, config=None): 
+    #     if data_dict is None:
+    #         return partial(self.downsample_points_16lines, config=config)
+    #     assert "data_type" in data_dict["metadata"], '[Error Elodie] metadata not in data_dict!'
+    #     assert "ring" in data_dict, '[Error Elodie] ring not in data_dict!'
+    #     if config.DOWNSAMPLE_POINTS[self.mode] is not True:
+    #         data_dict.pop('ring')
+    #         return data_dict
+
+    #     downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
+    #     assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2','Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
+    #     align_points_switch = config.get('ALIGN_POINTS', False)
+    #     verticle_switch = config.get('VERTICAL_SAMPLE', True)
+    #     horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
+
+    #     points = data_dict['points']
+    #     data_type = data_dict["metadata"]["data_type"]
+
+    #     if data_type == "kitti":
+    #         if downsample_type == "TensorPro":
+    #             points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points_switch)
+    #         elif downsample_type == "TensorPro_v2":
+    #             points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch)
+    #         elif downsample_type == "VLP16":
+    #             points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=verticle_switch, return_extra_points=align_points_switch)
+    #     elif data_type == "nuscenes":
+    #         points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
+    #         points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])
+    #     elif data_type == "waymo":
+    #         points_16lines,_ = pointcloud_sample_utils.downsample_waymo(points, data_dict['ring'], sample_type=downsample_type)
+    #     if config.REPLACE_ORI_POINTS[self.mode]:
+    #         data_dict['points'] = points_16lines
+    #     else:
+    #         data_dict['16lines'] = {}
+    #         data_dict['16lines']['points_16lines'] = points_16lines
+    #         if align_points_switch: # elodie : if align_points is False, extra_points will be None 
+    #             data_dict['16lines']['extra_points_16lines'] = extra_points
+    #         # if config.get('GET_INBOX_POINTS', False): #elodie
+    #         #     point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
+    #         #         torch.from_numpy(points_16lines[:, 0:3]), torch.from_numpy(data_dict['gt_boxes'][:,:7])
+    #         #     ).numpy()
+    #         #     data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
+    #     data_dict.pop('ring')
+    #     return data_dict
+
     def downsample_points_16lines(self, data_dict=None, config=None): 
         if data_dict is None:
             return partial(self.downsample_points_16lines, config=config)
@@ -240,10 +302,9 @@ class DataProcessor(object):
         verticle_switch = config.get('VERTICAL_SAMPLE', True)
         horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
 
-        points = data_dict['points']
-        data_type = data_dict["metadata"]["data_type"]
-
         if data_type == "kitti":
+            points = data_dict['points']
+            data_type = data_dict["metadata"]["data_type"]
             if downsample_type == "TensorPro":
                 points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points_switch)
             elif downsample_type == "TensorPro_v2":
@@ -254,19 +315,18 @@ class DataProcessor(object):
             points_16lines = pointcloud_sample_utils.downsample_nusc_v2(points, data_dict['ring'])
             points_16lines = pointcloud_sample_utils.upsample_nusc_v1(points_16lines, data_dict['ring'])
         elif data_type == "waymo":
-            points_16lines = pointcloud_sample_utils.downsample_waymo(points, data_dict['ring'], sample_type=downsample_type)
+            # points_16lines,_ = pointcloud_sample_utils.downsample_waymo(points, data_dict['ring'], sample_type=downsample_type)
+            ring_remained = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61]  
+            # ring_remained_indices = (data_dict['ring'][..., None] == ring_remained).any(-1).nonzero()
+            # points_16lines = points[ring_remained_indices]
+            mask = np.in1d(data_dict['ring'],ring_remained)
+            points_16lines = points[mask]
+
         if config.REPLACE_ORI_POINTS[self.mode]:
             data_dict['points'] = points_16lines
         else:
             data_dict['16lines'] = {}
             data_dict['16lines']['points_16lines'] = points_16lines
-            if align_points_switch: # elodie : if align_points is False, extra_points will be None 
-                data_dict['16lines']['extra_points_16lines'] = extra_points
-            if config.get('GET_INBOX_POINTS', False): #elodie
-                point_indices = roiaware_pool3d_utils.points_in_boxes_cpu(
-                    torch.from_numpy(points_16lines[:, 0:3]), torch.from_numpy(data_dict['gt_boxes'][:,:7])
-                ).numpy()
-                data_dict['16lines']['points_16lines_inbox'] = points_16lines[point_indices.sum(axis=0) == 1]
         data_dict.pop('ring')
         return data_dict
 
