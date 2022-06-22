@@ -90,18 +90,6 @@ class DataProcessor(object):
             data_dict['gt_boxes'] = data_dict['gt_boxes'][mask]
         return data_dict
 
-    def shuffle_points(self, data_dict=None, config=None):
-        if data_dict is None:
-            return partial(self.shuffle_points, config=config)
-
-        if config.SHUFFLE_ENABLED[self.mode]:
-            points = data_dict['points']
-            shuffle_idx = np.random.permutation(points.shape[0])
-            points = points[shuffle_idx]
-            data_dict['points'] = points
-
-        return data_dict
-
     def transform_points_to_voxels_placeholder(self, data_dict=None, config=None):
         # just calculate grid size
         if data_dict is None:
@@ -140,57 +128,6 @@ class DataProcessor(object):
         data_dict['voxels'] = voxels
         data_dict['voxel_coords'] = coordinates
         data_dict['voxel_num_points'] = num_points
-        return data_dict
-
-    def sample_points(self, data_dict=None, config=None):
-        if data_dict is None:
-            return partial(self.sample_points, config=config)
-
-        num_points = config.NUM_POINTS[self.mode]
-        if num_points == -1:
-            return data_dict
-
-        points = data_dict['points']
-        if num_points < len(points):
-            pts_depth = np.linalg.norm(points[:, 0:3], axis=1)
-            pts_near_flag = pts_depth < 40.0
-            far_idxs_choice = np.where(pts_near_flag == 0)[0]
-            near_idxs = np.where(pts_near_flag == 1)[0]
-            choice = []
-            if num_points > len(far_idxs_choice):
-                near_idxs_choice = np.random.choice(near_idxs, num_points - len(far_idxs_choice), replace=False)
-                choice = np.concatenate((near_idxs_choice, far_idxs_choice), axis=0) \
-                    if len(far_idxs_choice) > 0 else near_idxs_choice
-            else: 
-                choice = np.arange(0, len(points), dtype=np.int32)
-                choice = np.random.choice(choice, num_points, replace=False)
-            np.random.shuffle(choice)
-        else:
-            choice = np.arange(0, len(points), dtype=np.int32)
-            if num_points > len(points):
-                extra_choice = np.random.choice(choice, num_points - len(points), replace=False)
-                choice = np.concatenate((choice, extra_choice), axis=0)
-            np.random.shuffle(choice)
-        data_dict['points'] = points[choice]
-        return data_dict
-
-    def calculate_grid_size(self, data_dict=None, config=None):
-        if data_dict is None:
-            grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(config.VOXEL_SIZE)
-            self.grid_size = np.round(grid_size).astype(np.int64)
-            self.voxel_size = config.VOXEL_SIZE
-            return partial(self.calculate_grid_size, config=config)
-        return data_dict
-
-    def downsample_depth_map(self, data_dict=None, config=None):
-        if data_dict is None:
-            self.depth_downsample_factor = config.DOWNSAMPLE_FACTOR
-            return partial(self.downsample_depth_map, config=config)
-
-        data_dict['depth_maps'] = transform.downscale_local_mean(
-            image=data_dict['depth_maps'],
-            factors=(self.depth_downsample_factor, self.depth_downsample_factor)
-        )
         return data_dict
 
     def forward(self, data_dict):

@@ -23,12 +23,3 @@ def find_all_spconv_keys(model: nn.Module, prefix="") -> Set[str]:
         found_keys.update(find_all_spconv_keys(child, prefix=new_prefix))
 
     return found_keys
-
-
-def replace_feature(out, new_features):
-    if "replace_feature" in out.__dir__():
-        # spconv 2.x behaviour
-        return out.replace_feature(new_features)
-    else:
-        out.features = new_features
-        return out
