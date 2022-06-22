@@ -55,17 +55,4 @@ if __name__ == '__main__':
         cmdclass={
             'build_ext': BuildExtension,
         },
-        ext_modules=[
-            make_cuda_ext(
-                name='iou3d_nms_cuda',
-                module='pcdet.ops.iou3d_nms',
-                sources=[
-                    'src/iou3d_cpu.cpp',
-                    'src/iou3d_nms_api.cpp',
-                    'src/iou3d_nms.cpp',
-                    'src/iou3d_nms_kernel.cu',
-                ]
-            ),
-
-        ],
     )

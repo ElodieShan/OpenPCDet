@@ -4,7 +4,6 @@ import torch.nn as nn
 
 from ...utils import box_coder_utils, common_utils
 from .target_assigner.anchor_generator import AnchorGenerator
-from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
 
 
 class AnchorHeadTemplate(nn.Module):
@@ -27,7 +26,6 @@ class AnchorHeadTemplate(nn.Module):
             anchor_ndim=self.box_coder.code_size
         )
         self.anchors = [x.cuda() for x in anchors]
-        self.target_assigner = self.get_target_assigner(anchor_target_cfg)
 
         self.forward_ret_dict = {}
 
@@ -47,30 +45,6 @@ class AnchorHeadTemplate(nn.Module):
                 anchors_list[idx] = new_anchors
 
         return anchors_list, num_anchors_per_location_list
-
-    def get_target_assigner(self, anchor_target_cfg):
-        if anchor_target_cfg.NAME == 'AxisAlignedTargetAssigner':
-            target_assigner = AxisAlignedTargetAssigner(
-                model_cfg=self.model_cfg,
-                class_names=self.class_names,
-                box_coder=self.box_coder,
-                match_height=anchor_target_cfg.MATCH_HEIGHT
-            )
-        else:
-            raise NotImplementedError
-        return target_assigner
-
-    def assign_targets(self, gt_boxes):
-        """
-        Args:
-            gt_boxes: (B, M, 8)
-        Returns:
-
-        """
-        targets_dict = self.target_assigner.assign_targets(
-            self.anchors, gt_boxes
-        )
-        return targets_dict
 
     def generate_predicted_boxes(self, batch_size, cls_preds, box_preds, dir_cls_preds=None):
         """

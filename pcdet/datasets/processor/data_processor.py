@@ -83,11 +83,6 @@ class DataProcessor(object):
             mask = common_utils.mask_points_by_range(data_dict['points'], self.point_cloud_range)
             data_dict['points'] = data_dict['points'][mask]
 
-        if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
-            mask = box_utils.mask_boxes_outside_range_numpy(
-                data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1)
-            )
-            data_dict['gt_boxes'] = data_dict['gt_boxes'][mask]
         return data_dict
 
     def transform_points_to_voxels_placeholder(self, data_dict=None, config=None):
