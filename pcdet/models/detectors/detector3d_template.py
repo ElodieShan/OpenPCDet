@@ -159,10 +159,17 @@ class Detector3DTemplate(nn.Module):
                 else:
                     label_preds = label_preds + 1
 
-                selected, selected_scores = model_nms_utils.class_score_filter(
-                    box_scores=cls_preds, box_preds=box_preds,
-                    score_thresh=post_process_cfg.SCORE_THRESH
-                )
+                if post_process_cfg.get('NMS_CONFIG', None) is not None:
+                    selected, selected_scores = model_nms_utils.nms_rotate_cpu(
+                        box_scores=cls_preds, box_preds=box_preds,
+                        nms_config=post_process_cfg.NMS_CONFIG,
+                        score_thresh=post_process_cfg.SCORE_THRESH
+                    )
+                else:
+                    selected, selected_scores = model_nms_utils.class_score_filter(
+                        box_scores=cls_preds, box_preds=box_preds,
+                        score_thresh=post_process_cfg.SCORE_THRESH
+                    )
                 final_scores = selected_scores
                 final_labels = label_preds[selected]
                 final_boxes = box_preds[selected]
