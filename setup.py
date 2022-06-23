@@ -3,6 +3,7 @@ import subprocess
 
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+from pybind11.setup_helpers import Pybind11Extension, build_ext
 
 
 def get_git_commit_number():
@@ -35,6 +36,7 @@ if __name__ == '__main__':
         name='pcdet',
         version=version,
         description='OpenPCDet is a general codebase for 3D object detection from point cloud',
+        setup_requires=["pybind11"],
         install_requires=[
             'numpy',
             'llvmlite',
@@ -44,10 +46,15 @@ if __name__ == '__main__':
             'pyyaml',
             'scikit-image',
             'tqdm',
+            'pybind11', 
             'SharedArray',
             # 'spconv',  # spconv has different names depending on the cuda version
         ],
-
+        ext_modules=[
+            Pybind11Extension("pcdet.utils.voxel_generator.point_to_voxel_3d",
+                ["pcdet/utils/voxel_generator/src/point_to_voxel_3d.cpp"],
+                ),
+            ],
         author='Shaoshuai Shi',
         author_email='shaoshuaics@gmail.com',
         license='Apache License 2.0',
