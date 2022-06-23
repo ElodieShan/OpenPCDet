@@ -7,7 +7,7 @@ import torch
 
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
-from pcdet.models import build_network, load_data_to_gpu
+from pcdet.models import build_network, load_data
 from pcdet.utils import common_utils
 
 
@@ -76,25 +76,20 @@ def main():
         root_path=Path(args.data_path), ext=args.ext, logger=logger
     )
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
-
-    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = 'cpu'
+    model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset, device=device)
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
-    model.cuda()
+    print("device:", device)
+    model.to(device)
     model.eval()
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
-            load_data_to_gpu(data_dict)
+            load_data(data_dict, device=device)
             pred_dicts, _ = model.forward(data_dict)
             print("pred_dicts:", pred_dicts)
-            # V.draw_scenes(
-            #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-            #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            # )
-
-            # if not OPEN3D_FLAG:
-            #     mlab.show(stop=True)
 
     logger.info('Demo done.')
 

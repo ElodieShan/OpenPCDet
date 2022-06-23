@@ -7,13 +7,13 @@ from .target_assigner.anchor_generator import AnchorGenerator
 
 
 class AnchorHeadTemplate(nn.Module):
-    def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training):
+    def __init__(self, model_cfg, num_class, class_names, grid_size, point_cloud_range, predict_boxes_when_training, device):
         super().__init__()
         self.model_cfg = model_cfg
         self.num_class = num_class
         self.class_names = class_names
         self.predict_boxes_when_training = predict_boxes_when_training
-
+        self.device = device
         anchor_target_cfg = self.model_cfg.TARGET_ASSIGNER_CONFIG
         self.box_coder = getattr(box_coder_utils, anchor_target_cfg.BOX_CODER)(
             num_dir_bins=anchor_target_cfg.get('NUM_DIR_BINS', 6),
@@ -23,17 +23,17 @@ class AnchorHeadTemplate(nn.Module):
         anchor_generator_cfg = self.model_cfg.ANCHOR_GENERATOR_CONFIG
         anchors, self.num_anchors_per_location = self.generate_anchors(
             anchor_generator_cfg, grid_size=grid_size, point_cloud_range=point_cloud_range,
-            anchor_ndim=self.box_coder.code_size
+            anchor_ndim=self.box_coder.code_size, device=self.device
         )
-        self.anchors = [x.cuda() for x in anchors]
+        self.anchors = [x.to(self.device) for x in anchors]
 
         self.forward_ret_dict = {}
 
     @staticmethod
-    def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7):
+    def generate_anchors(anchor_generator_cfg, grid_size, point_cloud_range, anchor_ndim=7, device='cpu'):
         anchor_generator = AnchorGenerator(
             anchor_range=point_cloud_range,
-            anchor_generator_config=anchor_generator_cfg
+            anchor_generator_config=anchor_generator_cfg, device=device
         )
         feature_map_size = [grid_size[:2] // config['feature_map_stride'] for config in anchor_generator_cfg]
         anchors_list, num_anchors_per_location_list = anchor_generator.generate_anchors(feature_map_size)

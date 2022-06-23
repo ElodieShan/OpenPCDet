@@ -70,12 +70,3 @@ def create_logger(log_file=None, rank=0, log_level=logging.INFO):
     logger.propagate = False
     return logger
 
-
-def worker_init_fn(worker_id, seed=666):
-    if seed is not None:
-        random.seed(seed + worker_id)
-        np.random.seed(seed + worker_id)
-        torch.manual_seed(seed + worker_id)
-        torch.cuda.manual_seed(seed + worker_id)
-        torch.cuda.manual_seed_all(seed + worker_id)
-

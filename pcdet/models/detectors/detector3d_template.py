@@ -11,12 +11,13 @@ from ..model_utils import model_nms_utils
 
 
 class Detector3DTemplate(nn.Module):
-    def __init__(self, model_cfg, num_class, dataset):
+    def __init__(self, model_cfg, num_class, dataset, device):
         super().__init__()
         self.model_cfg = model_cfg
         self.num_class = num_class
         self.dataset = dataset
         self.class_names = dataset.class_names
+        self.device = device
         self.register_buffer('global_step', torch.LongTensor(1).zero_())
 
         self.module_topology = [
@@ -99,6 +100,7 @@ class Detector3DTemplate(nn.Module):
             grid_size=model_info_dict['grid_size'],
             point_cloud_range=model_info_dict['point_cloud_range'],
             predict_boxes_when_training=self.model_cfg.get('ROI_HEAD', False),
+            device=self.device,
             voxel_size=model_info_dict.get('voxel_size', False)
         )
         model_info_dict['module_list'].append(dense_head_module)
@@ -126,7 +128,6 @@ class Detector3DTemplate(nn.Module):
         """
         post_process_cfg = self.model_cfg.POST_PROCESSING
         batch_size = batch_dict['batch_size']
-        recall_dict = {}
         pred_dicts = []
         for index in range(batch_size):
             if batch_dict.get('batch_index', None) is not None:

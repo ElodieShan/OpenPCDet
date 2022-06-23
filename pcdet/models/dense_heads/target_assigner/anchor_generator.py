@@ -2,7 +2,7 @@ import torch
 
 
 class AnchorGenerator(object):
-    def __init__(self, anchor_range, anchor_generator_config):
+    def __init__(self, anchor_range, anchor_generator_config, device):
         super().__init__()
         self.anchor_generator_cfg = anchor_generator_config
         self.anchor_range = anchor_range
@@ -10,7 +10,7 @@ class AnchorGenerator(object):
         self.anchor_rotations = [config['anchor_rotations'] for config in anchor_generator_config]
         self.anchor_heights = [config['anchor_bottom_heights'] for config in anchor_generator_config]
         self.align_center = [config.get('align_center', False) for config in anchor_generator_config]
-
+        self.device = device
         assert len(self.anchor_sizes) == len(self.anchor_rotations) == len(self.anchor_heights)
         self.num_of_anchor_sets = len(self.anchor_sizes)
 
@@ -33,10 +33,10 @@ class AnchorGenerator(object):
 
             x_shifts = torch.arange(
                 self.anchor_range[0] + x_offset, self.anchor_range[3] + 1e-5, step=x_stride, dtype=torch.float32,
-            ).cuda()
+            ).to(self.device)
             y_shifts = torch.arange(
                 self.anchor_range[1] + y_offset, self.anchor_range[4] + 1e-5, step=y_stride, dtype=torch.float32,
-            ).cuda()
+            ).to(self.device)
             z_shifts = x_shifts.new_tensor(anchor_height)
 
             num_anchor_size, num_anchor_rotation = anchor_size.__len__(), anchor_rotation.__len__()
