@@ -235,7 +235,7 @@ class DataProcessor(object):
             return data_dict
 
         downsample_type = config.get('DOWNSAMPLE_TYPE', 'TensorPro')
-        assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2','Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
+        assert downsample_type in ['VLP16','TensorPro', 'TensorPro_v2','TensorPro_v42', 'TensorPro_v5', 'Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64'], '[Error Elodie] DOWNSAMPLE_TYPE is neither TensorPro nor VLP16!'
         align_points_switch = config.get('ALIGN_POINTS', False)
         verticle_switch = config.get('VERTICAL_SAMPLE', True)
         horizontal_switch = config.get('HORIZONTAL_SAMPLE', True)
@@ -248,6 +248,10 @@ class DataProcessor(object):
                 points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch, return_extra_points=align_points_switch)
             elif downsample_type == "TensorPro_v2":
                 points_16lines = pointcloud_sample_utils.downsample_kitti_v2(points, data_dict['ring'], verticle_switch=verticle_switch, horizontal_switch=horizontal_switch)
+            elif downsample_type == "TensorPro_v42":
+                points_16lines = pointcloud_sample_utils.downsample_kitti_v42(points, data_dict['ring'], verticle_switch=verticle_switch)
+            elif downsample_type == "TensorPro_v5":
+                points_16lines = pointcloud_sample_utils.downsample_kitti_v5(points, data_dict['ring'], verticle_switch=verticle_switch)
             elif downsample_type == "VLP16":
                 points_16lines, extra_points = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, data_dict['ring'], verticle_switch=verticle_switch, return_extra_points=align_points_switch)
         elif data_type == "nuscenes":

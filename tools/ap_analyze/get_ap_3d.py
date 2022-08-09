@@ -39,7 +39,7 @@ print("result:\n",res,"\n")
 
 for class_name in ['CAR', 'PED', 'CYC']:
     for difficult in ['easy', 'mod', 'hard']: 
-        output_str = str(res[class_name][difficult][0]) + '/' + str(res[class_name][difficult][1])
+        output_str = str(res[class_name][difficult][0])
         print(output_str, end='\t')
 
 print("\n******Done******\n")

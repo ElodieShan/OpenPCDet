@@ -126,6 +126,7 @@ def train_model(model, optimizer, train_loader, model_func, lr_scheduler, optim_
                 model_teacher=None, model_copy=None, use_sub_data=False, cross_sample_prob=0.0, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
                 merge_all_iters_to_one_epoch=False): # elodie teacher model
+
     accumulated_iter = start_iter
     with tqdm.trange(start_epoch, total_epochs, desc='epochs', dynamic_ncols=True, leave=(rank == 0)) as tbar:
         total_it_each_epoch = len(train_loader)
@@ -205,7 +206,7 @@ def save_checkpoint(state, filename='checkpoint'):
         optimizer_state = state['optimizer_state']
         state.pop('optimizer_state', None)
         optimizer_filename = '{}_optim.pth'.format(filename)
-        torch.save({'optimizer_state': optimizer_state}, optimizer_filename)
+        torch.save({'optimizer_state': optimizer_state}, optimizer_filename,_use_new_zipfile_serialization=False)
 
     filename = '{}.pth'.format(filename)
-    torch.save(state, filename)
+    torch.save(state, filename,_use_new_zipfile_serialization=False)

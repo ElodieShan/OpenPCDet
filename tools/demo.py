@@ -2,14 +2,14 @@ import argparse
 import glob
 from pathlib import Path
 
-try:
-    import open3d
-    from visual_utils import open3d_vis_utils as V
-    OPEN3D_FLAG = True
-except:
-    import mayavi.mlab as mlab
-    from visual_utils import visualize_utils as V
-    OPEN3D_FLAG = False
+# try:
+#     import open3d
+#     from visual_utils import open3d_vis_utils as V
+#     OPEN3D_FLAG = True
+# except:
+#     import mayavi.mlab as mlab
+#     from visual_utils import visualize_utils as V
+#     OPEN3D_FLAG = False
 
 import numpy as np
 import torch
@@ -44,19 +44,24 @@ class DemoDataset(DatasetTemplate):
         return len(self.sample_file_list)
 
     def __getitem__(self, index):
+        print("1111")
         if self.ext == '.bin':
+            print("----bin?")
             points = np.fromfile(self.sample_file_list[index], dtype=np.float32).reshape(-1, 4)
         elif self.ext == '.npy':
             points = np.load(self.sample_file_list[index])
         else:
+            print("----1?")
             raise NotImplementedError
 
         input_dict = {
             'points': points,
             'frame_id': index,
         }
+        print("input_dict:", input_dict)
 
         data_dict = self.prepare_data(data_dict=input_dict)
+        print("data_dict:", data_dict)
         return data_dict
 
 
@@ -90,20 +95,23 @@ def main():
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
+    print("========",len(demo_dataset))
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
+            logger.info('!!!')
+
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
             pred_dicts, _ = model.forward(data_dict)
+            print(pred_dicts)
+            # V.draw_scenes(
+            #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
+            #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+            # )
 
-            V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-
-            if not OPEN3D_FLAG:
-                mlab.show(stop=True)
+            # if not OPEN3D_FLAG:
+            #     mlab.show(stop=True)
 
     logger.info('Demo done.')
 

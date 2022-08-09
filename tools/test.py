@@ -56,6 +56,11 @@ def parse_config():
 def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
     # load checkpoint
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test)
+    model_state = model.state_dict()
+
+    state = {'model_state': model_state}
+    torch.save(state, "/home/dgq/workspace/OpenPCDet/output/kitti_models/second/202203018_SECOND_kitti_TSPv3_batch4_gpu8/model2.pth", _use_new_zipfile_serialization=False)
+    print("OOOOOK")
     model.cuda()
 
     # start evaluation

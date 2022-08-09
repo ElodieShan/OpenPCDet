@@ -39,6 +39,27 @@ def downsample_kitti_v2(points, ring, verticle_switch=True, horizontal_switch=Tr
         points = points[mask]
     return points
 
+def downsample_kitti_v42(points, ring, verticle_switch=True, horizontal_switch=True):
+    if verticle_switch:
+        ring_remained = [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46]
+
+        # ring_remained = [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47]
+        mask = np.in1d(ring,ring_remained)
+        points = points[mask] # faster
+        ring = ring[mask]
+    return points
+
+def downsample_kitti_v5(points, ring, verticle_switch=True, horizontal_switch=True):
+    if verticle_switch:
+        ring_remained = [33, 31, 29, 27, 25, 23, 21, 19, 17, 15, 13, 12, 10, 8, 6, 4]
+
+        # ring_remained = [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47]
+        mask = np.in1d(ring,ring_remained)
+        points = points[mask] # faster
+        ring = ring[mask]
+    return points
+
+
 def downsample_waymo(points, ring, sample_type, verticle_switch=True, horizontal_switch=False):
     if sample_type == 'Waymo_64':
         ring_remained = [0]

@@ -377,6 +377,8 @@ class KittiDataset(DatasetTemplate):
             # for sample_type in ['Waymo_v1', 'Waymo_v2', 'Waymo_v3', 'Waymo_64']:
             if sample_type=="TSPv3":
                 points_16lines, _ = pointcloud_sample_utils.downsample_kitti(points, ring, verticle_switch=True, horizontal_switch=False, return_extra_points=False)
+            elif sample_type=="TSPv42":
+                points_16lines = pointcloud_sample_utils.downsample_kitti_v42(points, ring, verticle_switch=True)
             elif sample_type=="VLP":
                 points_16lines, _ = pointcloud_sample_utils.downsample_kitti_to_VLP16(points, ring, verticle_switch=True, return_extra_points=False)
 
@@ -400,6 +402,137 @@ class KittiDataset(DatasetTemplate):
 
         return eval_gt_annos
 
+    def get_eval_distances_annos(self, sample_type="dis_0_30"):
+        print("******gt sample_type:", sample_type)
+        eval_gt_annos = []
+        from tqdm import tqdm
+        num_points = [0,0,0,0,0,0]
+        for idx in tqdm(range(len(self.kitti_infos))):
+            info = copy.deepcopy(self.kitti_infos[idx])
+            sample_idx = info['point_cloud']['lidar_idx']
+            calib = self.get_calib(sample_idx)
+            get_item_list = self.dataset_cfg.get('GET_ITEM_LIST', ['points'])
+
+            if 'annos' in info:
+                annos = copy.deepcopy(info['annos'])
+                annos = common_utils.drop_info_with_name(annos, name='DontCare')
+                loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+                gt_names = annos['name']
+                gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+                gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+                distances_gt = np.sqrt((gt_boxes_lidar[:,0]**2+gt_boxes_lidar[:,1]**2))
+            if sample_type == "dis_0_30":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<30]
+            elif sample_type == "dis_30_50":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 30 and x<50]
+            elif sample_type == "dis_50_inf":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 50]
+            elif sample_type == "dis_0_20":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<20]
+            elif sample_type == "dis_20_40":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 20 and x<40]
+            elif sample_type == "dis_40_60":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 40 and x<60]
+            elif sample_type == "dis_0_10":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<10]
+            elif sample_type == "dis_10_20":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 10 and x<20]
+            elif sample_type == "dis_20_30":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 20 and x<30]
+            elif sample_type == "dis_30_40":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 30 and x<40]
+            elif sample_type == "dis_40_50":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 40 and x<50]
+            elif sample_type == "dis_50_60":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 50 and x<60]
+            elif sample_type == "dis_60_70":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 60 and x<70]
+            # print("annos:", distances_gt[keep_indices])
+            # print(keep_indices)
+
+            for key in annos.keys():
+                annos[key] = annos[key][keep_indices]
+                # if key == 'difficulty':
+                #     # print("difficulty:", annos[key])
+                #     for i in range(len(annos[key])):
+                #         if annos[key][i] >= 0:
+                #             annos[key][i] = 0
+                #     print(annos[key])
+                #     # annos[key] = [0 for i, x in enumerate(annos[key]) if i>=0 else i]
+                # if key == 'truncated' or key == 'occluded' :
+                #     annos[key] = [1 for i, x in enumerate(annos[key])]
+            for i_n,nn in enumerate(annos['name']):
+                if nn == "Car":
+                    num_points[0] += annos['num_points_in_gt'][i_n]
+                    num_points[1] += 1
+                if nn == "Pedestrian":
+                    num_points[2] += annos['num_points_in_gt'][i_n]
+                    num_points[3] += 1
+                if nn == "Cyclist":
+                    num_points[4] += annos['num_points_in_gt'][i_n]
+                    num_points[5] += 1
+                    
+            eval_gt_annos.append(annos)
+        print(sample_type,"mean:", )
+        print("Car:", float(num_points[0]) / float(num_points[1]))
+        print("Pedestrian:", float(num_points[2]) / float(num_points[3]))
+        print("Cyclist:", float(num_points[4]) / float(num_points[5]))
+
+        return eval_gt_annos
+
+    def get_eval_distances_pred(self, det_annos, sample_type="dis_0_30"):
+        print("******gt sample_type:", sample_type)
+        sampled_det_annos = []
+        from tqdm import tqdm
+        for idx in tqdm(range(len(det_annos))):
+            annos = copy.deepcopy(det_annos[idx])
+            gt_boxes_lidar = annos['boxes_lidar']
+            distances_gt = np.sqrt((gt_boxes_lidar[:,0]**2+gt_boxes_lidar[:,1]**2))
+            if sample_type == "dis_0_30":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<30]
+                if distances_gt[keep_indices] != [] and distances_gt[keep_indices].max()>30:
+                    print("Error!")
+            elif sample_type == "dis_30_50":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 30 and x<50]
+                if distances_gt[keep_indices] != [] and (distances_gt[keep_indices].max()>50 or distances_gt[keep_indices].min()<30) :
+                    print("Error!")
+            elif sample_type == "dis_50_inf":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 50]
+                if distances_gt[keep_indices] != [] and distances_gt[keep_indices].min()<50:
+                    print("Error!")
+            elif sample_type == "dis_0_20":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<20]
+            elif sample_type == "dis_20_40":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 20 and x<40]
+            elif sample_type == "dis_40_60":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 40 and x<60]
+            elif sample_type == "dis_0_10":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 0 and x<10]
+            elif sample_type == "dis_10_20":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 10 and x<20]
+            elif sample_type == "dis_20_30":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 20 and x<30]
+            elif sample_type == "dis_30_40":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 30 and x<40]
+            elif sample_type == "dis_40_50":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 40 and x<50]
+            elif sample_type == "dis_50_60":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 50 and x<60]
+            elif sample_type == "dis_60_70":
+                keep_indices = [i for i, x in enumerate(distances_gt) if x >= 60 and x<70]
+            # print("pred:", distances_gt[keep_indices])
+
+            # print(annos.keys())
+            for key in annos.keys():
+                # print("keep_indices:", keep_indices)
+                if key == 'frame_id':
+                    continue
+                annos[key] = annos[key][keep_indices]
+            sampled_det_annos.append(annos)
+
+        return sampled_det_annos
+
+
 
     def evaluation(self, det_annos, class_names, sample_type=None, **kwargs):
         if 'annos' not in self.kitti_infos[0].keys():
@@ -408,11 +541,19 @@ class KittiDataset(DatasetTemplate):
         from .kitti_object_eval_python import eval as kitti_eval
 
         eval_det_annos = copy.deepcopy(det_annos)
+
         if sample_type is None:
             eval_gt_annos = [copy.deepcopy(info['annos']) for info in self.kitti_infos]
+        elif sample_type in ['dis_0_30', 'dis_30_50', 'dis_50_inf', 'dis_0_20', 'dis_20_40', 'dis_40_60', \
+             'dis_0_10', 'dis_10_20', 'dis_20_30', 'dis_30_40','dis_40_50', 'dis_50_60', 'dis_60_70']:
+            eval_det_annos = self.get_eval_distances_pred(eval_det_annos, sample_type=sample_type)
+            eval_gt_annos = self.get_eval_distances_annos(sample_type=sample_type)
         else:
             eval_gt_annos = self.get_eval_gt_annos(sample_type=sample_type) #TSPv3 VLP
 
+            # import pickle
+            # with open("/home/dgq/workspace/OpenPCDet/data/kitti_ring/val_tspv3.pkl", "wb") as f:
+            #     pickle.dump(eval_gt_annos, f)
         # ==== for debug elodie.shan ==== 
         # num = 2
         # eval_det_annos = eval_det_annos[:num]

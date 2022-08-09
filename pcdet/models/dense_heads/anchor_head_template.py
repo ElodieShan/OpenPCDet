@@ -401,7 +401,8 @@ class AnchorHeadTemplate(nn.Module):
                 # weights teach
                 self.soft_loss_weights['weights_teach'] = mimic_loss_utils.teach_weights(cls_preds, cls_preds_teacher)
                 if self.cls_soft_loss_source is None:
-                    weights = reg_weights
+                    weights = torch.full_like(reg_weights, 1, dtype=cls_weights.dtype) 
+                    weights = weights / torch.clamp(cared.sum(1, keepdim=True).float(), min=1.0)
                 else:
                     weights = torch.full_like(reg_weights, 0, dtype=cls_weights.dtype)
                     for src, src_weights in zip(self.cls_soft_loss_source, self.cls_soft_loss_source_weights):
