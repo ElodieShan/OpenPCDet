@@ -34,7 +34,10 @@ class SECONDNet(Detector3DTemplate):
         # print("is_teacher:",is_teacher,"   'points' in batch_dict:", batch_dict['points'].shape)
         if is_teacher:
             forword_result = self.get_forword_result()
-            return forword_result, batch_dict
+            teacher_batch_dict = {
+                'spatial_features_2d': batch_dict['spatial_features_2d']
+            }
+            return forword_result, teacher_batch_dict
             
         if self.training:            
             loss, tb_dict, disp_dict = self.get_training_loss(teacher_ret_dict=teacher_ret_dict, student_data_dict=batch_dict, teacher_data_dict=teacher_data_dict)

@@ -76,7 +76,7 @@ class DataAugmentor(object):
             data_dict['dense'] = {}
             data_dict['dense']['points_ori_num'] = points.shape[0]
 
-        if config.NUM_POINT_FEATURES==5 and points.shape[1] == 6:
+        if completed_points_all is not None and config.NUM_POINT_FEATURES==5 and points.shape[1] == 6:
             completed_points_all = np.concatenate([completed_points_all, \
                 np.zeros([completed_points_all.shape[0], 1])], axis=1)
         points = np.concatenate([points, completed_points_all], axis=0)

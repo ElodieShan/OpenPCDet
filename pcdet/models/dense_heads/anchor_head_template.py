@@ -644,7 +644,7 @@ class AnchorHeadTemplate(nn.Module):
 
             if self.reg_soft_loss_type in ['BoundedRegressionLoss', 'BoundedRegressionLoss_v2']:
                 box_preds_teacher = teacher_result['box_preds']
-                box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
+                # box_dir_cls_preds_teacher = teacher_result.get('dir_cls_preds', None)
                 box_preds_teacher = box_preds_teacher.view(batch_size, -1,
                                         box_preds_teacher.shape[-1] // self.num_anchors_per_location if not self.use_multihead else
                                         box_preds_teacher.shape[-1])
@@ -805,7 +805,11 @@ class AnchorHeadTemplate(nn.Module):
         return rpn_loss, tb_dict
 
     def get_forward_ret_dict(self): #elodie
-        return self.forward_ret_dict
+        teacher_ret_dict = {
+            'cls_preds':self.forward_ret_dict['cls_preds'],
+            'box_preds':self.forward_ret_dict['box_preds'],
+        }
+        return teacher_ret_dict
 
     def generate_predicted_boxes(self, batch_size, cls_preds, box_preds, dir_cls_preds=None):
         """

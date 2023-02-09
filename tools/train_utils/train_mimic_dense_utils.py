@@ -44,16 +44,23 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         optimizer.zero_grad()
 
         if model_teacher is not None: #elodie
-            batch_teacher = copy.deepcopy(batch)
+            # batch_teacher = copy.deepcopy(batch)
+            batch_teacher = {
+                    'voxels': batch['dense']['voxels'],
+                    'voxel_coords': batch['dense']['voxel_coords'],
+                    'voxel_num_points': batch['dense']['voxel_num_points'],
+                    'batch_size': batch['batch_size'],
+                    'gt_boxes': batch['gt_boxes'],
+                }
             batch.pop('dense')
 
-            batch_teacher['points'] = batch_teacher['dense']['points_dense']
-            batch_teacher['voxels'] = batch_teacher['dense']['voxels']
-            batch_teacher['voxel_coords'] = batch_teacher['dense']['voxel_coords']
-            batch_teacher['voxel_num_points'] = batch_teacher['dense']['voxel_num_points']
+            # batch_teacher['points'] = batch_teacher['dense']['points_dense']
+            # batch_teacher['voxels'] = batch_teacher['dense']['voxels']
+            # batch_teacher['voxel_coords'] = batch_teacher['dense']['voxel_coords']
+            # batch_teacher['voxel_num_points'] = batch_teacher['dense']['voxel_num_points']
 
-            if 'voxel_coords_inbox' in batch_teacher['dense']:
-                batch_teacher['voxel_coords_inbox'] = batch_teacher['dense']['voxel_coords_inbox']
+            # if 'voxel_coords_inbox' in batch_teacher['dense']:
+                # batch_teacher['voxel_coords_inbox'] = batch_teacher['dense']['voxel_coords_inbox']
 
             if use_sub_data:
                 batch_dict_sub = {
@@ -67,7 +74,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
                 batch_teacher.pop('dense')
                 loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher, batch_dict_sub=batch_dict_sub)
             else:
-                batch_teacher.pop('dense')
+                # batch_teacher.pop('dense')
                 loss, tb_dict, disp_dict = model_func(model, batch, batch_dict_teacher=batch_teacher, model_teacher=model_teacher)
         else:
             batch_dict_sub = None
